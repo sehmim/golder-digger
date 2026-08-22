@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 import os
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
-from . import ableton, config, db, ingest, scoring
+from . import ableton, audition, config, db, ingest, scoring
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -205,18 +206,59 @@ def tag(chunk_id: str, req: TagReq):
     return {"chunk_id": chunk_id, "role": req.role, "role_source": "manual"}
 
 
-@app.get("/chunk/{chunk_id}/audio")
-def audio(chunk_id: str):
+def _chunk_row(chunk_id: str):
     row = state["conn"].execute(
-        "SELECT path, t_start, t_end FROM chunks WHERE chunk_id=?", (chunk_id,)).fetchone()
+        "SELECT path, t_start, t_end, bpm FROM chunks WHERE chunk_id=?",
+        (chunk_id,)).fetchone()
     if not row:
-        raise HTTPException(404, "no such chunk")
-    import io
-    import librosa
-    import soundfile as sf
-    y, sr = librosa.load(row["path"], sr=None, mono=True,
-                         offset=row["t_start"], duration=row["t_end"] - row["t_start"])
-    buf = io.BytesIO()
-    sf.write(buf, y, sr, format="WAV")
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="audio/wav")
+        raise HTTPException(404, f"no such chunk: {chunk_id}")
+    return row
+
+
+def _audio_response(y, sr, meta):
+    """Render meta travels in headers so the caller can show what was done to
+    the audio -- a stretched preview should never be mistaken for the raw file."""
+    headers = {f"x-audition-{k.replace('_', '-')}": str(v) for k, v in meta.items()}
+    return StreamingResponse(audition.to_wav(y, sr), media_type="audio/wav",
+                             headers=headers)
+
+
+@app.get("/chunk/{chunk_id}/audio")
+def audio(chunk_id: str, bpm: float | None = Query(None, gt=20, le=300,
+                                                   description="session tempo to align to")):
+    """The chunk, time-stretched to `bpm` when given. Pitch is never shifted."""
+    row = _chunk_row(chunk_id)
+    y, sr, meta = audition.render_chunk(row, bpm)
+    return _audio_response(y, sr, meta)
+
+
+@app.get("/session/preview")
+def preview(candidate: str = Query(..., description="chunk to audition"),
+            context: list[str] = Query(default_factory=list,
+                                       description="chunk ids already in the session"),
+            bpm: float | None = Query(None, gt=20, le=300),
+            candidate_only: bool = False):
+    """Context and candidate mixed into one tempo-aligned file.
+
+    The point of the product is whether two things work together, so the default
+    is to hand back the combination rather than two clips the listener has to
+    assemble in their head.
+    """
+    cand_row = _chunk_row(candidate)
+    ctx_rows = [_chunk_row(c) for c in context]
+
+    # the session tempo wins; without one, the context's own tempo is the anchor
+    target = bpm
+    if target is None:
+        bpms = [r["bpm"] for r in ctx_rows if r["bpm"]]
+        target = float(np.median(bpms)) if bpms else None
+
+    y, sr, meta = audition.render_chunk(cand_row, target)
+    if not candidate_only and ctx_rows:
+        bed = np.zeros(0, dtype=np.float32)
+        for r in ctx_rows:
+            part, sr_c, _ = audition.render_chunk(r, target, sr=sr)
+            bed = part if not len(bed) else audition.mix(bed, part)
+        y = audition.mix(bed, y)
+        meta = {**meta, "mixed_with": len(ctx_rows)}
+    return _audio_response(y, sr, {**meta, "target_bpm": target})
