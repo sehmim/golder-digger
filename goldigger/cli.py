@@ -4,7 +4,7 @@ import csv
 import json
 import sys
 
-from . import config, db, ingest, scoring
+from . import ableton, config, db, ingest, scoring
 
 
 CSV_FIELDS = ["rank", "chunk_id", "path", "role", "bpm", "tonic", "is_major",
@@ -52,6 +52,15 @@ def main():
     p.add_argument("--format", choices=["json", "csv"], default="json",
                    help="csv writes rows to stdout; fit_floor goes to stderr")
 
+    p = sub.add_parser("als", help="resolve a Live set into context chunks")
+    p.add_argument("project")
+    p.add_argument("--analyze", action="store_true", help="rank against the resolved context")
+    p.add_argument("--distance", type=float, default=50)
+    p.add_argument("-k", type=int, default=config.DEFAULT_K)
+    p.add_argument("--format", choices=["json", "csv"], default="json")
+    p.add_argument("--no-session-context", action="store_true",
+                   help="ignore Live's tempo and key; infer them from the corpus")
+
     sub.add_parser("serve", help="run the API")
     args = ap.parse_args()
 
@@ -78,6 +87,31 @@ def main():
             write_csv(results, floor, args.distance)
         else:
             print(json.dumps({"fit_floor": floor, "results": results}, indent=2))
+
+    elif args.cmd == "als":
+        als = ableton.load_als(args.project)
+        print(ableton.describe(als), file=sys.stderr)
+        res = ableton.resolve(conn, als)
+        print(f"resolved {len(res['matched'])}/{len(als['samples'])} samples "
+              f"-> {len(res['context_ids'])} chunks", file=sys.stderr)
+
+        if not args.analyze:
+            print(json.dumps({"session": {k: als[k] for k in
+                                          ("creator", "tempo", "scale_root", "scale_index",
+                                           "is_major", "in_key")}, **res}, indent=2))
+        elif not res["context_ids"]:
+            raise SystemExit("no sample in this set is in the corpus -- nothing to analyze")
+        else:
+            corpus = ingest.load_corpus(conn)
+            ctx = scoring.build_context(corpus, res["context_ids"])
+            if not args.no_session_context:
+                applied = ableton.apply_session_context(ctx, als)
+                print(f"session context applied: {applied or '(none)'}", file=sys.stderr)
+            results, floor = scoring.select(corpus, ctx, args.distance, args.k)
+            if args.format == "csv":
+                write_csv(results, floor, args.distance)
+            else:
+                print(json.dumps({"fit_floor": floor, "results": results}, indent=2))
 
     elif args.cmd == "serve":
         import uvicorn
