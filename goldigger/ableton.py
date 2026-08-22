@@ -18,11 +18,29 @@ from pathlib import Path
 
 from . import config, features
 
-# Live 12 stores the scale as an index into its own scale list, not a string.
-# Only these two are relied on for is_major; every other index is carried through
-# verbatim with mode=None, so a mis-ordered table cannot silently flip the mode.
+# The scale element changed shape between Live versions, verified against real sets:
+#   Live 10: <ScaleInformation><RootNote Value="0"/><Name Value="Major"/></>
+#   Live 12: <ScaleInformation><Root     Value="0"/><Name Value="0"/></>
+# The Live 10 string is unambiguous. The Live 12 integer is an index into Live's own
+# scale list, so only 0/1 are read as major/minor -- every other index yields mode=None
+# rather than guessing, since a mis-ordered table would silently flip the mode.
 SCALE_MAJOR = 0
 SCALE_MINOR = 1
+
+
+class UnreadableSet(ValueError):
+    """An .als that cannot be parsed -- truncated, empty, or not actually gzip."""
+
+
+def _parse_scale_name(raw):
+    """-> (scale_index|None, scale_name|None, is_major|None)."""
+    if raw is None:
+        return None, None, None
+    if raw.lstrip("-").isdigit():
+        idx = int(raw)
+        return idx, None, {SCALE_MAJOR: True, SCALE_MINOR: False}.get(idx)
+    mode = {"major": True, "minor": False}.get(raw.strip().lower())
+    return None, raw, mode
 
 
 def _val(el, tag, default=None):
@@ -34,8 +52,18 @@ def _val(el, tag, default=None):
 
 
 def _open(path) -> ET.Element:
-    with gzip.open(str(path), "rb") as f:
-        return ET.fromstring(f.read().decode("utf-8", "replace"))
+    """A real archive contains truncated and zero-byte sets; fail with the path named."""
+    try:
+        with gzip.open(str(path), "rb") as f:
+            raw = f.read()
+    except OSError as exc:
+        raise UnreadableSet(f"{path}: not gzip ({exc})") from exc
+    if not raw.strip():
+        raise UnreadableSet(f"{path}: empty file")
+    try:
+        return ET.fromstring(raw.decode("utf-8", "replace"))
+    except ET.ParseError as exc:
+        raise UnreadableSet(f"{path}: malformed XML ({exc})") from exc
 
 
 # ---------------------------------------------------------------- sample refs
@@ -102,18 +130,28 @@ def load_als(path) -> dict:
     root = _open(path)
     project_dir = path.parent
 
-    # the first <Tempo> belongs to the master track; per-clip tempo is not session tempo
-    tempo_el = root.find(".//Tempo")
+    # Session tempo lives on the main track. Live 12 renamed MasterTrack -> MainTrack,
+    # and clip/preset .als files have no track at all -- so fall back to document order
+    # rather than reporting no tempo. Scenes also carry <Tempo> with no Manual value,
+    # so taking the first <Tempo> blindly is not safe on every set.
+    tempo_el = None
+    for tag in ("MainTrack", "MasterTrack"):
+        track = root.find(f".//{tag}")
+        if track is not None:
+            tempo_el = track.find(".//Tempo")
+            if tempo_el is not None:
+                break
+    if tempo_el is None:
+        tempo_el = next((t for t in root.iter("Tempo") if t.find("Manual") is not None), None)
     tempo = _val(tempo_el, "Manual")
 
     scale_el = root.find(".//ScaleInformation")
-    scale_root = _val(scale_el, "Root")
-    scale_name = _val(scale_el, "Name")
+    scale_root = _val(scale_el, "Root")          # Live 12
+    if scale_root is None:
+        scale_root = _val(scale_el, "RootNote")  # Live 10
+    idx, name, mode = _parse_scale_name(_val(scale_el, "Name"))
     in_key = (_val(root.find(".//LiveSet"), "InKey") or
               _val(root, "InKey") or "false").lower() == "true"
-
-    idx = int(scale_name) if scale_name is not None else None
-    mode = {SCALE_MAJOR: True, SCALE_MINOR: False}.get(idx)
 
     return {
         "path": str(path),
@@ -122,6 +160,7 @@ def load_als(path) -> dict:
         "tempo": float(tempo) if tempo is not None else None,
         "scale_root": int(scale_root) if scale_root is not None else None,
         "scale_index": idx,
+        "scale_name": name,
         "is_major": mode,
         "in_key": in_key,
         "samples": sample_refs(root, project_dir),
@@ -215,7 +254,8 @@ def describe(als: dict) -> str:
     root = als.get("scale_root")
     key = "-"
     if root is not None:
-        mode = {True: "major", False: "minor", None: f"scale#{als['scale_index']}"}[als["is_major"]]
+        mode = ({True: "major", False: "minor"}.get(als["is_major"])
+                or als.get("scale_name") or f"scale#{als['scale_index']}")
         key = f"{config.PITCH_NAMES[root % 12]} {mode}"
     return (f"{als['creator']}  tempo={als['tempo']}  key={key}"
             f"  in_key={als['in_key']}  samples={len(als['samples'])}")

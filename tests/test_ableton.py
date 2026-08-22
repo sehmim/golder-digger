@@ -180,3 +180,89 @@ def test_key_is_not_trusted_when_the_set_is_not_key_aware(tmp_path):
     ctx = {"bpm": 174.0, "tonic": 11, "kconf": 0.004}
     assert ableton.apply_session_context(ctx, als) == ["bpm"]
     assert ctx["tonic"] == 11 and ctx["kconf"] == 0.004
+
+
+# ---------------------------------------------------------------- tempo location
+
+MAIN_TRACK = """
+  <MainTrack><DeviceChain><Mixer>
+    <Tempo><Manual Value="{tempo}" /></Tempo>
+  </Mixer></DeviceChain></MainTrack>
+"""
+
+
+def test_tempo_comes_from_the_main_track_not_document_order(tmp_path):
+    """Live 12 renamed MasterTrack->MainTrack, and scenes carry a valueless <Tempo>."""
+    xml = """<?xml version="1.0"?>
+    <Ableton Creator="Ableton Live 12.1.1"><LiveSet>
+      <Scenes><Scene><Tempo><LomId Value="0" /></Tempo></Scene></Scenes>
+      <Tracks><AudioTrack><Tempo><Manual Value="999" /></Tempo></AudioTrack></Tracks>
+      %s
+    </LiveSet></Ableton>""" % MAIN_TRACK.format(tempo=214)
+    p = tmp_path / "Set.als"
+    with gzip.open(p, "wb") as f:
+        f.write(xml.encode())
+    assert ableton.load_als(p)["tempo"] == 214.0
+
+
+def test_clip_als_with_no_track_still_reports_a_tempo(tmp_path):
+    """Preset/clip .als files have no MainTrack; a scene's valueless Tempo must be skipped."""
+    xml = """<?xml version="1.0"?>
+    <Ableton Creator="Ableton Live 12.2"><LiveSet>
+      <Scenes><Scene><Tempo><LomId Value="0" /></Tempo></Scene></Scenes>
+      <Tempo><Manual Value="128" /></Tempo>
+    </LiveSet></Ableton>"""
+    p = tmp_path / "Clip.als"
+    with gzip.open(p, "wb") as f:
+        f.write(xml.encode())
+    assert ableton.load_als(p)["tempo"] == 128.0
+
+
+# ---------------------------------------------------------------- format variants
+
+LIVE10 = """<?xml version="1.0"?>
+<Ableton Creator="Ableton Live 10.1.35"><LiveSet>
+  <InKey Value="true" />
+  <ScaleInformation><RootNote Value="2" /><Name Value="{name}" /></ScaleInformation>
+  <MainTrack><DeviceChain><Mixer><Tempo><Manual Value="120" /></Tempo></Mixer></DeviceChain></MainTrack>
+</LiveSet></Ableton>"""
+
+
+def _gz(tmp_path, xml, name="Set.als"):
+    p = tmp_path / name
+    with gzip.open(p, "wb") as f:
+        f.write(xml.encode())
+    return p
+
+
+def test_live10_names_the_scale_as_a_string(tmp_path):
+    """Live 10 writes <RootNote> and a scale *name*; Live 12 writes <Root> and an index."""
+    als = ableton.load_als(_gz(tmp_path, LIVE10.format(name="Major")))
+    assert als["scale_root"] == 2 and als["is_major"] is True
+    assert als["scale_name"] == "Major" and als["scale_index"] is None
+
+
+def test_live10_minor(tmp_path):
+    assert ableton.load_als(_gz(tmp_path, LIVE10.format(name="Minor")))["is_major"] is False
+
+
+def test_live10_exotic_scale_keeps_its_name_and_claims_no_mode(tmp_path):
+    als = ableton.load_als(_gz(tmp_path, LIVE10.format(name="Minor Blues")))
+    assert als["scale_name"] == "Minor Blues"
+    assert als["is_major"] is None
+
+
+def test_empty_set_raises_unreadable_not_parseerror(tmp_path):
+    """315 of 752 sets in a real archive are zero-byte files."""
+    p = tmp_path / "Empty.als"
+    with gzip.open(p, "wb") as f:
+        f.write(b"")
+    with pytest.raises(ableton.UnreadableSet, match="empty"):
+        ableton.load_als(p)
+
+
+def test_non_gzip_file_raises_unreadable(tmp_path):
+    p = tmp_path / "Plain.als"
+    p.write_bytes(b"this is not gzip at all")
+    with pytest.raises(ableton.UnreadableSet):
+        ableton.load_als(p)
