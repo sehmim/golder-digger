@@ -140,10 +140,23 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
                   <span className="entry" title={candidate.path}>
                     <span className="entry-name">{baseName(candidate.path)}</span>
                     <span className="entry-meta">{meta(candidate)}</span>
+                    {candidate.tags?.length ? (
+                      <span className="tags">
+                        {candidate.tags.map((tag) => (
+                          <span className="tag" key={tag}>
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
                   </span>
 
-                  <span className={`role-chip role-${candidate.role ?? 'none'}`}>
+                  <span
+                    className={`role-chip role-${candidate.role ?? 'none'}`}
+                    title={candidate.role_source === 'clap' ? 'inferred from tags' : undefined}
+                  >
                     {candidate.role ?? '—'}
+                    {candidate.role_source === 'clap' ? '?' : ''}
                   </span>
                 </li>
               )

@@ -14,6 +14,27 @@ export interface JobStatus {
   message: string | null
 }
 
+/** Essentia's whole-file second opinion, when the pass has seen this file. */
+export interface EssentiaView {
+  key: string | null
+  key_confidence: number | null
+  bpm: number | null
+  bpm_confidence: number | null
+  danceability: number | null
+  /** null when neither tool named a key, which is not a disagreement. */
+  agrees: boolean | null
+}
+
+export interface EssentiaSummary {
+  /** How the extractor can run here; null means it cannot. */
+  mode: 'native' | 'docker' | null
+  files: number
+  covered: number
+  agree: number
+  disagree: number
+  no_key: number
+}
+
 /** One <SampleRef> from a Live set, after resolution against the corpus. */
 export interface SessionSample {
   name: string
@@ -24,6 +45,10 @@ export interface SessionSample {
   chunk_ids?: string[]
   chunks?: number
   role?: string | null
+  /** 'filename' when a human named it, 'clap' when the tag classifier guessed. */
+  role_source?: string | null
+  tags?: string[]
+  essentia?: EssentiaView | null
   bpm?: number | null
   tonic?: string | null
   /** Why it did not resolve. Present on unmatched samples only. */
@@ -37,6 +62,8 @@ export interface Candidate {
   chunk_id: string
   path: string
   role: string | null
+  role_source: string | null
+  tags: string[]
   bpm: number | null
   tonic: string | null
   is_major: boolean

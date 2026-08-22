@@ -107,6 +107,15 @@ app.whenReady().then(() => {
 
   ipcMain.handle('session:load', (_event, path: string) => api.loadSet(path))
 
+  // The same poller: an Essentia pass is a job row like any other.
+  ipcMain.handle('essentia:start', async (_event, root: string) => {
+    const { job_id } = await api.startEssentia(root)
+    watchJob(job_id)
+    return job_id
+  })
+
+  ipcMain.handle('essentia:summary', () => api.essentiaSummary())
+
   ipcMain.handle('chunk:audio', (_event, chunkId: string) => api.chunkAudio(chunkId))
 
   ipcMain.handle(

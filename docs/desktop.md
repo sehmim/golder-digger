@@ -27,8 +27,10 @@ This is not ceremony. A renderer-side fetch to `127.0.0.1:8420` is blocked by CO
 which is exactly what happens if you try to preview the renderer in a plain browser
 without proxying. In Electron the fetch runs in node, so there is no CORS story at all.
 
-`src/main/api.ts` adopts an already-listening server instead of spawning a second one.
-See `architecture.md` for the interpreter resolution and the stale-server trap.
+`src/main/api.ts` adopts an already-listening server instead of spawning a second one —
+but only if `/health` carries the `HEALTH_MARKER` field (`essentia`). An older server
+without it is refused with a message instead of being adopted and then 404-ing every
+newer route. See `architecture.md` for the interpreter resolution.
 
 ## IPC surface
 
@@ -41,6 +43,8 @@ See `architecture.md` for the interpreter resolution and the stale-server trap.
 | `session:load` | invoke | path → `SessionSet` |
 | `session:analyze` | invoke | `(contextIds, distance, k)` → `AnalyzeResult` |
 | `chunk:audio` | invoke | `chunk_id` → WAV bytes as an `ArrayBuffer` |
+| `essentia:start` | invoke | `root` → `job_id`, watched by the same poller |
+| `essentia:summary` | invoke | coverage + agreement, and whether it can run here |
 | `ingest:progress` | send | one per poll, per job |
 | `ingest:error` | send | poller gave up |
 | `api:ready` | send | Python finished booting (or failed) |
@@ -72,8 +76,16 @@ handoff fires exactly once — returning to step 1 and ingesting more does not y
 screen away again, which is why the explicit "Continue to your project →" affordance
 exists.
 
+The step machine will not hand over while **any** job is still moving. Ingest now runs
+Essentia per file, so a folder is characterised only when its job says finished —
+advancing on the first finished row would have shown the project step over a corpus that
+was still being written.
+
 **Step 1** starts one job per folder, so each folder gets its own row and its own
-progress. **Step 2** loads the set, lists matched and unmatched samples in the same row
+progress. Once a folder is ingested, a **Second opinion** block offers the Essentia pass
+over the same roots. Those jobs share the `IngestJob` row type — `kind` separates them,
+because an Essentia job reports a phase where an ingest reports a file count — and a
+failed pass shows the reason in place of the count rather than raising a banner. **Step 2** loads the set, lists matched and unmatched samples in the same row
 component, and offers a single multi-root job for the missing ones. When that job
 finishes, `ProjectStep` re-resolves the set and the rows flip. It then hands the whole
 `SessionSet` up to `App`, which is what `DigStep` runs on.
@@ -120,3 +132,6 @@ npm run package                      # electron-builder --dir
   file with librosa; a sample that moved since ingest returns 500 and the row shows the
   error rather than silently doing nothing.
 - **No waveform.** Rows play, but there is no scrub bar and no visual of the chunk.
+- **Tags need a re-ingest.** Chunks written before the tag classifier landed have
+  `tags = NULL` and `role_source = 'mock'`; the rows simply show no chips until the
+  folder is ingested again.

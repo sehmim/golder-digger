@@ -1,5 +1,6 @@
 """SQLite schema and blob helpers. Vectors are fixed-width float32 blobs."""
 import sqlite3
+import threading
 import numpy as np
 from . import config
 
@@ -76,6 +77,26 @@ def connect(path=None):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    # an ingest holds the write lock in bursts; a reader waits rather than raising
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
+_local = threading.local()
+
+
+def thread_conn(path=None):
+    """One connection per thread, to the same WAL database.
+
+    A single sqlite3 connection shared across threads interleaves cursors: with
+    ingest committing on a worker thread, a `SELECT ... WHERE job_id=?` on a
+    request thread would intermittently come back empty and the API answered
+    "404 no such job" for a job that was plainly running. WAL gives concurrent
+    readers alongside the one writer, so a connection each is the fix.
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = _local.conn = connect(path)
     return conn
 
 

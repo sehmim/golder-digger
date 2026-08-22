@@ -27,6 +27,17 @@ export interface JobStatus {
   message: string | null
 }
 
+/** Essentia's whole-file second opinion, when the pass has seen this file. */
+export interface EssentiaView {
+  key: string | null
+  key_confidence: number | null
+  bpm: number | null
+  bpm_confidence: number | null
+  danceability: number | null
+  /** null when neither tool named a key, which is not a disagreement. */
+  agrees: boolean | null
+}
+
 export interface SessionSample {
   name: string
   candidates: string[]
@@ -35,10 +46,23 @@ export interface SessionSample {
   chunk_ids?: string[]
   chunks?: number
   role?: string | null
+  role_source?: string | null
+  tags?: string[]
+  essentia?: EssentiaView | null
   bpm?: number | null
   tonic?: string | null
   reason?: string
   ingest_path?: string | null
+}
+
+export interface EssentiaSummary {
+  /** How the extractor can run here; null means it cannot. */
+  mode: 'native' | 'docker' | null
+  files: number
+  covered: number
+  agree: number
+  disagree: number
+  no_key: number
 }
 
 /** One row of the results list: a chunk the engine picked for the context. */
@@ -46,6 +70,8 @@ export interface Candidate {
   chunk_id: string
   path: string
   role: string | null
+  role_source: string | null
+  tags: string[]
   bpm: number | null
   tonic: string | null
   is_major: boolean
@@ -94,13 +120,26 @@ function pythonBin(): string {
   return existsSync(venv) ? venv : 'python3'
 }
 
-async function health(signal?: AbortSignal): Promise<boolean> {
+/**
+ * A field that only exists in a build with the current routes.
+ *
+ * An already-listening server is adopted rather than replaced, so a `serve` left
+ * over from an earlier session gets used silently and then 404s every route
+ * added since it started. Checking one field turns that into a message.
+ */
+const HEALTH_MARKER = 'essentia'
+
+async function healthBody(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
   try {
     const response = await fetch(`${BASE}/health`, { signal })
-    return response.ok
+    return response.ok ? ((await response.json()) as Record<string, unknown>) : null
   } catch {
-    return false
+    return null
   }
+}
+
+async function health(signal?: AbortSignal): Promise<boolean> {
+  return (await healthBody(signal)) !== null
 }
 
 export function status(): { ready: boolean; error: string | null } {
@@ -112,7 +151,14 @@ export async function start(): Promise<void> {
 
   booting = (async () => {
     // A server already listening (a `golddigger serve` in a terminal) is used as is.
-    if (await health()) {
+    const existing = await healthBody()
+    if (existing) {
+      if (!(HEALTH_MARKER in existing)) {
+        bootError =
+          `the API already running on :${PORT} is older than this app and will 404 ` +
+          'newer routes — restart it (./start.sh --restart)'
+        throw new Error(bootError)
+      }
       ready = true
       return
     }
@@ -179,6 +225,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function startIngest(roots: string[]): Promise<{ job_id: string }> {
   return request('/ingest', { method: 'POST', body: JSON.stringify({ roots }) })
+}
+
+export function startEssentia(root: string): Promise<{ job_id: string }> {
+  return request('/essentia', { method: 'POST', body: JSON.stringify({ root }) })
+}
+
+export function essentiaSummary(): Promise<EssentiaSummary> {
+  return request('/essentia/summary')
 }
 
 export function jobStatus(jobId: string): Promise<JobStatus> {

@@ -51,6 +51,11 @@ PYTHONPATH=. .venv/bin/python -m pytest -q -k basename            # one test
 - `test_acceptance.py::test_distance_ladder` — the real regression guard: sweep DISTANCE
   10→90, assert novelty rises monotonically while fit stays above the floor.
 
+Ingest calls Essentia per file, which the test suite cannot afford — `tests/conftest.py`
+turns `ESSENTIA_ON_INGEST` off for the whole session (session-scoped, because the
+corpora other tests build are session-scoped too and would otherwise ingest first).
+`tests/test_ingest_essentia.py` covers the inline path with the extractor stubbed.
+
 `scripts/smoke.py <audio-file>` is a step-0 gate that proves beat-this and CLAP actually
 run on this machine. It is not part of the suite and needs `GOLDDIGGER_MOCK=0` deps.
 

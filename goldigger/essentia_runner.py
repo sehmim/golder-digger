@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -81,6 +82,18 @@ def key_agreement(e_key, e_scale, tonic_pc, is_major):
 
 def essentia_available_natively() -> bool:
     return importlib.util.find_spec("essentia") is not None
+
+
+def runner_mode() -> str | None:
+    """How this machine can run the extractor, or None if it cannot.
+
+    A caller that is not a terminal -- the desktop app -- has to be able to say
+    "you cannot run this here" before it offers the button, rather than after a
+    subprocess fails.
+    """
+    if essentia_available_natively():
+        return "native"
+    return "docker" if shutil.which("docker") else None
 
 
 def script_dir() -> Path:
@@ -176,43 +189,126 @@ def merge(conn, records, in_dir) -> int:
     for rec in records:
         if rec.get("error") or not rec.get("rel_path"):
             continue
-        key = str((in_dir / rec["rel_path"]).resolve()).lower()
-        file_hash = index.get(key)
+        path = in_dir / rec["rel_path"]
+        file_hash = index.get(str(path.resolve()).lower())
         if file_hash is None:
             continue
-
-        tonalness, tonic_pc, is_major = _librosa_view(conn, file_hash)
-        agreement = key_agreement(rec.get("key_key"), rec.get("key_scale"),
-                                  tonic_pc, is_major)
-        conn.execute(
-            """INSERT INTO essentia (file_hash, path, key_key, key_scale,
-                   key_strength, key_confidence, key_agreement, bpm, bpm_confidence,
-                   danceability, average_loudness, dynamic_complexity,
-                   tuning_frequency, payload, extracted_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(file_hash) DO UPDATE SET
-                 key_key=excluded.key_key, key_scale=excluded.key_scale,
-                 key_strength=excluded.key_strength,
-                 key_confidence=excluded.key_confidence,
-                 key_agreement=excluded.key_agreement, bpm=excluded.bpm,
-                 bpm_confidence=excluded.bpm_confidence,
-                 danceability=excluded.danceability,
-                 average_loudness=excluded.average_loudness,
-                 dynamic_complexity=excluded.dynamic_complexity,
-                 tuning_frequency=excluded.tuning_frequency,
-                 payload=excluded.payload, extracted_at=excluded.extracted_at""",
-            (file_hash, str(in_dir / rec["rel_path"]), rec.get("key_key"),
-             rec.get("key_scale"), rec.get("key_strength_raw"),
-             gated_confidence(rec.get("key_strength_raw"), tonalness),
-             None if agreement is None else int(agreement),
-             rec.get("bpm"), rec.get("bpm_confidence"), rec.get("danceability"),
-             rec.get("average_loudness"), rec.get("dynamic_complexity"),
-             rec.get("tuning_frequency"), json.dumps(rec), now))
+        merge_one(conn, file_hash, path, rec, commit=False, now=now)
         written += 1
 
     conn.commit()
     return written
 
 
+def merge_one(conn, file_hash: str, path, rec: dict, commit: bool = True,
+              now: str | None = None, compare: bool = True) -> None:
+    """Fold one extractor record in, for one already-ingested file.
+
+    Split out of merge() so ingest can call it per file as it goes: the native
+    extractor takes a path, and a folder-at-a-time pass would mean walking the
+    library twice and holding every record in memory first.
+
+    Must run AFTER the file's chunks are written -- the gate and the agreement
+    flag are read back off them.
+
+    `compare=False` when the chunk's key came from this same record: in mock mode
+    Essentia supplies it, and scoring that as agreement would be the extractor
+    agreeing with itself.
+    """
+    now = now or dt.datetime.now(dt.UTC).isoformat()
+    tonalness, tonic_pc, is_major = _librosa_view(conn, file_hash)
+    agreement = key_agreement(rec.get("key_key"), rec.get("key_scale"),
+                              tonic_pc, is_major) if compare else None
+    conn.execute(
+        """INSERT INTO essentia (file_hash, path, key_key, key_scale,
+               key_strength, key_confidence, key_agreement, bpm, bpm_confidence,
+               danceability, average_loudness, dynamic_complexity,
+               tuning_frequency, payload, extracted_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(file_hash) DO UPDATE SET
+             key_key=excluded.key_key, key_scale=excluded.key_scale,
+             key_strength=excluded.key_strength,
+             key_confidence=excluded.key_confidence,
+             key_agreement=excluded.key_agreement, bpm=excluded.bpm,
+             bpm_confidence=excluded.bpm_confidence,
+             danceability=excluded.danceability,
+             average_loudness=excluded.average_loudness,
+             dynamic_complexity=excluded.dynamic_complexity,
+             tuning_frequency=excluded.tuning_frequency,
+             payload=excluded.payload, extracted_at=excluded.extracted_at""",
+        (file_hash, str(path), rec.get("key_key"), rec.get("key_scale"),
+         rec.get("key_strength_raw"),
+         gated_confidence(rec.get("key_strength_raw"), tonalness),
+         None if agreement is None else int(agreement),
+         rec.get("bpm"), rec.get("bpm_confidence"), rec.get("danceability"),
+         rec.get("average_loudness"), rec.get("dynamic_complexity"),
+         rec.get("tuning_frequency"), json.dumps(rec), now))
+    if commit:
+        conn.commit()
+
+
+def extract_one(path) -> dict | None:
+    """MusicExtractor on a single file, in-process. None when it cannot run.
+
+    Only the native path: starting a container per file would cost more than the
+    analysis. A machine without essentia falls back to the folder-at-a-time
+    Docker pass, which is what `run()` is for.
+    """
+    if not essentia_available_natively():
+        return None
+    sys.path.insert(0, str(script_dir()))
+    try:
+        import essentia_extract
+        return essentia_extract.extract_one(path)
+    finally:
+        sys.path.pop(0)
+
+
 def load(out_path) -> list[dict]:
     return json.loads(Path(out_path).read_text())
+
+
+# ---------------------------------------------------------------- job
+
+def run_job(conn, job_id: str, root, out_path=None) -> None:
+    """Synchronous body of an Essentia pass, shaped like `ingest.run_job`.
+
+    The extractor is one subprocess over a whole directory, so there is no
+    per-file progress to report: `jobs.message` names the phase instead, and
+    total/done are 1 so the same progress row can render it.
+
+    A failure is recorded on the job rather than raised: this runs in a
+    background task, and "no essentia and no docker on this machine" is a
+    condition the UI has to show, not a crash.
+    """
+    out_path = Path(out_path or (config.ROOT / "essentia.json"))
+    now = dt.datetime.now(dt.UTC).isoformat()
+    conn.execute(
+        "UPDATE jobs SET state='running', total=1, done=0, message=?, started_at=?"
+        " WHERE job_id=?", ("extracting", now, job_id))
+    conn.commit()
+
+    try:
+        if runner_mode() is None:
+            raise RuntimeError(
+                "essentia is not installed and docker is not available -- "
+                "pip install essentia (macOS/Linux) or start docker")
+        run(root, out_path)
+        conn.execute("UPDATE jobs SET message='merging' WHERE job_id=?", (job_id,))
+        conn.commit()
+        merged = merge(conn, load(out_path), root)
+        conn.execute("UPDATE jobs SET done=1, message=? WHERE job_id=?",
+                     (f"merged {merged} files", job_id))
+    except subprocess.CalledProcessError as exc:
+        # The full argv is no use to a UI; the exit status and the fix are.
+        where = "docker" if runner_mode() == "docker" else "the extractor"
+        hint = " -- is the docker daemon running?" if exc.returncode == 125 else ""
+        conn.execute("UPDATE jobs SET failed=1, message=? WHERE job_id=?",
+                     (f"{where} exited {exc.returncode}{hint}", job_id))
+    except Exception as exc:
+        conn.execute("UPDATE jobs SET failed=1, message=? WHERE job_id=?",
+                     (str(exc)[:300], job_id))
+
+    conn.execute("UPDATE jobs SET state='finished', finished_at=? WHERE job_id=?",
+                 (dt.datetime.now(dt.UTC).isoformat(), job_id))
+    conn.commit()

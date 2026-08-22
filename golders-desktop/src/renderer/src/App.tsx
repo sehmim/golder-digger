@@ -14,7 +14,7 @@ const ADVANCE_DELAY_MS = 520
 const ADVANCE_DURATION_MS = 700
 
 export default function App(): React.JSX.Element {
-  const { jobs, startIngest, dismissJob, clearJobs, error } = useIngest()
+  const { jobs, startIngest, startEssentia, dismissJob, clearJobs, error } = useIngest()
   const [step, setStep] = useState<Step>('sources')
   // The step on its way out, kept mounted for the length of the handoff.
   const [leaving, setLeaving] = useState<Step | null>(null)
@@ -25,7 +25,10 @@ export default function App(): React.JSX.Element {
   const hasAdvanced = useRef(false)
   const handoff = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const readyJobs = jobs.filter((job) => job.state === 'finished')
+  const readyJobs = jobs.filter((job) => job.kind === 'ingest' && job.state === 'finished')
+  // Ingest now runs Essentia per file, so a folder is only characterised when its
+  // job says finished. Any job still moving keeps the screen where it is.
+  const busy = jobs.some((job) => job.state !== 'finished')
 
   const goTo = useCallback((next: Step) => {
     setStep((current) => {
@@ -46,18 +49,23 @@ export default function App(): React.JSX.Element {
 
   // The first folder to finish ingesting hands the screen over to the project step.
   useEffect(() => {
-    if (hasAdvanced.current || readyJobs.length === 0) return
+    if (hasAdvanced.current || readyJobs.length === 0 || busy) return
 
     hasAdvanced.current = true
     setHasReachedProject(true)
     const start = setTimeout(() => goTo('project'), ADVANCE_DELAY_MS)
     return () => clearTimeout(start)
-  }, [readyJobs.length, goTo])
+  }, [readyJobs.length, busy, goTo])
 
   async function chooseDirectories(): Promise<void> {
     const directories = await window.desktop.selectDirectories()
     // One job per folder, so each gets its own row and its own progress.
     for (const directory of directories) await startIngest([directory])
+  }
+
+  async function runEssentia(roots: string[]): Promise<void> {
+    // One pass per folder: the extractor takes a directory, not a list.
+    for (const root of roots) await startEssentia(root)
   }
 
   function clearAll(): void {
@@ -96,11 +104,12 @@ export default function App(): React.JSX.Element {
               <SourcesStep
                 jobs={jobs}
                 apiReady={api.ready}
-                canContinue={hasReachedProject && readyJobs.length > 0}
+                canContinue={hasReachedProject && readyJobs.length > 0 && !busy}
                 onChoose={() => void chooseDirectories()}
                 onDismiss={dismissJob}
                 onClear={clearAll}
                 onContinue={() => goTo('project')}
+                onRunEssentia={(roots) => void runEssentia(roots)}
               />
             ) : null}
 

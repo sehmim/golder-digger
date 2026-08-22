@@ -91,12 +91,21 @@ against a metronome's 0.773 — backwards. Mean-removed: 0.752 against -0.069.
 
 ## Essentia — a second opinion, and a Windows caveat
 
-`golddigger essentia <root>` re-analyses the same folder with Essentia's
-MusicExtractor and merges a key second opinion, dissonance, pitch salience,
-danceability, and loudness into the corpus.
+Essentia's MusicExtractor supplies a key second opinion, dissonance, pitch
+salience, danceability and loudness, keyed by file hash in its own table.
 
-It is **optional enrichment, not part of ingest.** Ingest stays in-process and
-model-only; nothing here is on the Fit/Novelty path.
+**Ingest runs it per file** when the machine can import essentia
+(`GOLDDIGGER_ESSENTIA=0` opts out; a Docker-only machine gets one folder-wide
+pass at the end of the job). `golddigger essentia <root>` still exists as a
+re-run over a folder that was ingested without it.
+
+Under `GOLDDIGGER_MOCK=1` it is also the only real measurement in the pipeline,
+so its key and tempo replace the hash-derived ones on the chunk rows — a 0 BPM
+answer means "one-shot" and is stored as NULL rather than as a tempo. Chroma and
+the CLAP vector stay synthetic, so Fit's harmony term and Novelty remain fiction
+until `GOLDDIGGER_MOCK=0`. In real mode beat-this and librosa stay authoritative
+and Essentia goes back to being the second opinion: nothing here is on the
+Fit/Novelty path.
 
 Essentia has no native Windows build — upstream's docs say Windows requires
 cross-compiling from Linux/macOS, which is a different problem from "no wheels
