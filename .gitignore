@@ -6,3 +6,6 @@ __pycache__/
 *.db-shm
 .pytest_cache/
 *.egg-info/
+golddigger-genai/*
+.promptvc
+.logs/

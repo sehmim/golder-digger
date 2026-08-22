@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import traceback
 import uuid
 from pathlib import Path
@@ -26,6 +27,23 @@ def walk(root) -> list[Path]:
         return [root]
     return sorted(p for p in root.rglob("*")
                   if p.is_file() and p.suffix.lower() in config.AUDIO_EXTS)
+
+
+def walk_all(roots) -> list[Path]:
+    """Union of walk() over several roots. Deduped, first-seen order kept.
+
+    A Live set's missing samples arrive as a list of individual files rather than
+    a folder, and walk() already treats a file as a one-element root.
+    """
+    if isinstance(roots, (str, Path)):
+        roots = [roots]
+    seen, out = set(), []
+    for root in roots:
+        for path in walk(root):
+            if str(path) not in seen:
+                seen.add(str(path))
+                out.append(path)
+    return out
 
 
 def analyze_file(path: Path) -> list[dict]:
@@ -98,10 +116,14 @@ def upsert(conn, rows):
     conn.commit()
 
 
-def run_job(conn, job_id: str, root: str):
-    """Synchronous body of an ingest job. Called from a background task."""
+def run_job(conn, job_id: str, roots):
+    """Synchronous body of an ingest job. Called from a background task.
+
+    `roots` is one folder/file or a list of them. `jobs.message` carries the file
+    currently being analyzed so a UI can name it while it waits.
+    """
     now = dt.datetime.now(dt.UTC).isoformat()
-    paths = walk(root)
+    paths = walk_all(roots)
     conn.execute("UPDATE jobs SET state='running', total=?, started_at=? WHERE job_id=?",
                  (len(paths), now, job_id))
     conn.commit()
@@ -109,6 +131,8 @@ def run_job(conn, job_id: str, root: str):
     seen = {r["file_hash"] for r in conn.execute("SELECT file_hash FROM files WHERE status='ok'")}
     done = failed = 0
     for path in paths:
+        conn.execute("UPDATE jobs SET message=? WHERE job_id=?", (str(path), job_id))
+        conn.commit()
         try:
             fh = features.file_hash(path)
             if fh in seen:                      # content-hash dedupe
@@ -131,15 +155,18 @@ def run_job(conn, job_id: str, root: str):
         conn.execute("UPDATE jobs SET done=?, failed=? WHERE job_id=?", (done, failed, job_id))
         conn.commit()
 
-    conn.execute("UPDATE jobs SET state='finished', finished_at=? WHERE job_id=?",
-                 (dt.datetime.now(dt.UTC).isoformat(), job_id))
+    conn.execute(
+        "UPDATE jobs SET state='finished', message=NULL, finished_at=? WHERE job_id=?",
+        (dt.datetime.now(dt.UTC).isoformat(), job_id))
     conn.commit()
 
 
-def new_job(conn, root: str) -> str:
+def new_job(conn, roots) -> str:
+    """`jobs.root` is display only, so a multi-root job stores its list as JSON."""
     job_id = uuid.uuid4().hex[:12]
+    label = str(roots) if isinstance(roots, (str, Path)) else json.dumps([str(r) for r in roots])
     conn.execute("INSERT INTO jobs (job_id, root, state) VALUES (?,?,'queued')",
-                 (job_id, str(root)))
+                 (job_id, label))
     conn.commit()
     return job_id
 

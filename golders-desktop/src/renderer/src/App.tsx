@@ -1,80 +1,107 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useIngest } from './lib/useIngest'
+import type { ApiStatus } from './lib/api'
+import SourcesStep from './steps/SourcesStep'
+import ProjectStep from './steps/ProjectStep'
 
-export default function App() {
-  const [selectedDirectories, setSelectedDirectories] = useState<string[]>([])
+type Phase = 'sources' | 'advancing' | 'project'
 
-  async function chooseDirectories() {
+const ADVANCE_DELAY_MS = 520
+const ADVANCE_DURATION_MS = 700
+
+const STEPS = ['Samples', 'Project'] as const
+
+export default function App(): React.JSX.Element {
+  const { jobs, startIngest, dismissJob, clearJobs, error } = useIngest()
+  const [phase, setPhase] = useState<Phase>('sources')
+  const [hasReachedProject, setHasReachedProject] = useState(false)
+  const [api, setApi] = useState<ApiStatus>({ ready: false, error: null })
+  const hasAdvanced = useRef(false)
+
+  const readyJobs = jobs.filter((job) => job.state === 'finished')
+
+  // Python boots after the window paints, so its readiness arrives either way.
+  useEffect(() => {
+    const off = window.desktop.onApiReady((status) => setApi(status as ApiStatus))
+    void window.desktop.apiStatus().then(setApi)
+    return off
+  }, [])
+
+  // The first folder to finish ingesting hands the screen over to the project step.
+  useEffect(() => {
+    if (hasAdvanced.current || readyJobs.length === 0) return
+
+    hasAdvanced.current = true
+    setHasReachedProject(true)
+    const start = setTimeout(() => setPhase('advancing'), ADVANCE_DELAY_MS)
+    return () => clearTimeout(start)
+  }, [readyJobs.length])
+
+  useEffect(() => {
+    if (phase !== 'advancing') return
+
+    const finish = setTimeout(() => setPhase('project'), ADVANCE_DURATION_MS)
+    return () => clearTimeout(finish)
+  }, [phase])
+
+  async function chooseDirectories(): Promise<void> {
     const directories = await window.desktop.selectDirectories()
-
-    if (directories.length > 0) {
-      setSelectedDirectories((current) => [...new Set([...current, ...directories])])
-    }
+    // One job per folder, so each gets its own row and its own progress.
+    for (const directory of directories) await startIngest([directory])
   }
 
-  function removeDirectory(directory: string) {
-    setSelectedDirectories((current) => current.filter((item) => item !== directory))
+  function clearAll(): void {
+    hasAdvanced.current = false
+    setHasReachedProject(false)
+    clearJobs()
   }
+
+  const stepIndex = phase === 'sources' ? 0 : 1
 
   return (
     <main className="page">
-      <section className="directory-picker">
-        <div className="folder-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" role="img">
-            <path d="M3.5 6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11Z" />
-          </svg>
-        </div>
+      <nav className="steps" aria-label="Setup progress">
+        {STEPS.map((label, index) => (
+          <span
+            key={label}
+            className="step"
+            data-state={index < stepIndex ? 'done' : index === stepIndex ? 'active' : 'waiting'}
+          >
+            <span className="step-dot" aria-hidden="true" />
+            {label}
+          </span>
+        ))}
+      </nav>
 
-        <div className="copy">
-          <p className="eyebrow">Get started</p>
-          <h1>Select your sample directories</h1>
-          <p className="description">
-            Choose the folders that contain the audio files you want Gold Digger to explore.
-          </p>
-        </div>
-
-        <button className="primary-button" type="button" onClick={chooseDirectories}>
-          {selectedDirectories.length > 0 ? 'Add directories' : 'Choose directories'}
-        </button>
-
-        {selectedDirectories.length > 0 ? (
-          <div className="selections" aria-live="polite">
-            <div className="selections-header">
-              <span>
-                {selectedDirectories.length}{' '}
-                {selectedDirectories.length === 1 ? 'directory' : 'directories'} selected
-              </span>
-              <button
-                className="clear-button"
-                type="button"
-                onClick={() => setSelectedDirectories([])}
-              >
-                Clear all
-              </button>
-            </div>
-
-            <ul>
-              {selectedDirectories.map((directory) => (
-                <li key={directory}>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3.5 6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11Z" />
-                  </svg>
-                  <span title={directory}>{directory}</span>
-                  <button
-                    className="remove-button"
-                    type="button"
-                    aria-label={`Remove ${directory}`}
-                    onClick={() => removeDirectory(directory)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
+      <div className="stage" data-phase={phase}>
+        {phase !== 'project' ? (
+          <div className={`panel${phase === 'advancing' ? ' panel--leaving' : ''}`}>
+            <SourcesStep
+              jobs={jobs}
+              apiReady={api.ready}
+              canContinue={hasReachedProject && readyJobs.length > 0}
+              onChoose={() => void chooseDirectories()}
+              onDismiss={dismissJob}
+              onClear={clearAll}
+              onContinue={() => setPhase('project')}
+            />
           </div>
-        ) : (
-          <p className="hint">Select multiple folders with Command-click.</p>
-        )}
-      </section>
+        ) : null}
+
+        {phase !== 'sources' ? (
+          <div className={`panel${phase === 'advancing' ? ' panel--entering' : ''}`}>
+            <ProjectStep
+              ingestJobs={jobs}
+              startIngest={startIngest}
+              sourceCount={readyJobs.length}
+              onBack={() => setPhase('sources')}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {api.error ? <p className="error banner">{api.error}</p> : null}
+      {error ? <p className="error banner">{error}</p> : null}
     </main>
   )
 }
