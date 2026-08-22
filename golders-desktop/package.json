@@ -1,0 +1,45 @@
+{
+  "name": "golders-desktop",
+  "version": "0.1.0",
+  "description": "Desktop interface for Gold Digger",
+  "main": "./out/main/index.js",
+  "author": "Gold Digger",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron-vite": "^5.0.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^7.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "com.golderdigger.desktop",
+    "productName": "Gold Digger",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.music"
+    }
+  }
+}
