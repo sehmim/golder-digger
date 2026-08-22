@@ -19,7 +19,11 @@ CREATE TABLE IF NOT EXISTS chunks (
   role            TEXT,
   role_source     TEXT,
   chroma          BLOB,
-  clap            BLOB
+  clap            BLOB,
+  tempo_confidence REAL,
+  tonalness       REAL,
+  spectral        TEXT,
+  tags            TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(file_hash);
 CREATE INDEX IF NOT EXISTS idx_chunks_role ON chunks(role);
@@ -31,6 +35,26 @@ CREATE TABLE IF NOT EXISTS files (
   status      TEXT,
   error       TEXT,
   ingested_at TEXT
+);
+
+-- Essentia is a second opinion on whole files, not chunks: MusicExtractor takes
+-- a path and characterises the file. Keyed by file_hash so it survives a move.
+CREATE TABLE IF NOT EXISTS essentia (
+  file_hash        TEXT PRIMARY KEY,
+  path             TEXT,
+  key_key          TEXT,
+  key_scale        TEXT,
+  key_strength     REAL,
+  key_confidence   REAL,
+  key_agreement    INTEGER,
+  bpm              REAL,
+  bpm_confidence   REAL,
+  danceability     REAL,
+  average_loudness REAL,
+  dynamic_complexity REAL,
+  tuning_frequency REAL,
+  payload          TEXT,
+  extracted_at     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
@@ -55,8 +79,26 @@ def connect(path=None):
     return conn
 
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS does nothing
+# to a table that already exists, so an older database needs them added in place
+# -- otherwise adding a confidence means re-ingesting the whole library.
+MIGRATIONS = {
+    "chunks": {
+        "tempo_confidence": "REAL",
+        "tonalness": "REAL",
+        "spectral": "TEXT",
+        "tags": "TEXT",
+    },
+}
+
+
 def init(conn):
     conn.executescript(SCHEMA)
+    for table, columns in MIGRATIONS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns.items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
     conn.commit()
 
 
