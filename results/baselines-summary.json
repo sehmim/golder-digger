@@ -1,0 +1,44 @@
+{
+  "random": {
+    "fit_mean": 0.545566578612418,
+    "novelty_mean": 0.5011487003058105,
+    "redundancy": 0.32516932462652526,
+    "role_dup": 0.19946808510638298,
+    "overlap_with_golddigger": 0.0011111111111111111
+  },
+  "metadata": {
+    "fit_mean": 0.7578238396174612,
+    "novelty_mean": 0.4399015672782875,
+    "redundancy": 0.5543839499354363,
+    "role_dup": 0.0,
+    "overlap_with_golddigger": 0.0035873015873015873
+  },
+  "nearest": {
+    "fit_mean": 0.41345829492085656,
+    "novelty_mean": 0.0020651758409785934,
+    "redundancy": 0.8913689374923706,
+    "role_dup": 0.9627659574468085,
+    "overlap_with_golddigger": 0.0
+  },
+  "inverse": {
+    "fit_mean": 0.544665508877673,
+    "novelty_mean": 0.4998715596330276,
+    "redundancy": 0.41800684000054994,
+    "role_dup": 0.1803191489361702,
+    "overlap_with_golddigger": 0.26614992414992417
+  },
+  "band_nofit": {
+    "fit_mean": 0.557850904831378,
+    "novelty_mean": 0.49996616972477065,
+    "redundancy": 0.2995350673298041,
+    "role_dup": 0.17606382978723403,
+    "overlap_with_golddigger": 0.6007865467865467
+  },
+  "golddigger": {
+    "fit_mean": 0.6438384319213638,
+    "novelty_mean": 0.4999784021406729,
+    "redundancy": 0.31551569993297257,
+    "role_dup": 0.056914893617021275,
+    "overlap_with_golddigger": 1.0
+  }
+}

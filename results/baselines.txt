@@ -1,0 +1,29 @@
+contexts=60  k=8  corpus=2181  rows=1800
+
+strategy         fit  fit_min  <floor  novelty  redund  roledup  overlap
+------------------------------------------------------------------------
+random         0.546    0.344   27.9%    0.501   0.325    19.9%     0.1%
+metadata       0.758    0.750    0.0%    0.440   0.554     0.0%     0.4%
+nearest        0.413    0.305   62.1%    0.002   0.891    96.3%     0.0%
+inverse        0.545    0.372   26.3%    0.500   0.418    18.0%    26.6%
+band_nofit     0.558    0.357   24.8%    0.500   0.300    17.6%    60.1%
+golddigger     0.644    0.539    0.0%    0.500   0.316     5.7%   100.0%
+
+overlap with golddigger, by DISTANCE (Jaccard of the returned sets)
+strategy           10       30       50       70       90
+random          0.2%     0.0%     0.0%     0.1%     0.2% 
+metadata        0.4%     0.2%     0.3%     0.5%     0.3% 
+nearest         0.0%     0.0%     0.0%     0.0%     0.0% 
+inverse        24.0%    25.2%    26.5%    28.6%    28.8% 
+band_nofit     44.9%    52.6%    58.5%    70.1%    74.3% 
+
+fit at each DISTANCE (the cost of asking for novelty)
+strategy           10       30       50       70       90
+random          0.546    0.546    0.546    0.546    0.546
+metadata        0.758    0.758    0.758    0.758    0.758
+nearest         0.413    0.413    0.413    0.413    0.413
+inverse         0.480    0.501    0.551    0.584    0.608
+band_nofit      0.488    0.531    0.572    0.591    0.607
+golddigger      0.615    0.635    0.651    0.655    0.663
+
+wrote results/csv/baselines.csv and results/baselines-summary.json

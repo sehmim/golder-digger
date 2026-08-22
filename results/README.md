@@ -152,3 +152,68 @@ ranking instead of being a constant.
 
 Note the extractor is still plainly fallible: that context file is named
 `126bpm` and beat-this called it 75.0.
+
+## Baselines: is this just inverse similarity?
+
+`scripts/baselines.py` → `baselines.txt`, `csv/baselines.csv`. 60 contexts
+(sampled from the 400 highest key-confidence chunks, so the harmony term is
+actually exercised), k=8, five DISTANCE positions, 1,800 selections.
+
+**What this can and cannot show.** It cannot show that any strategy is more
+*inspiring* — that needs listeners. It can falsify the claim that the
+strategies are interchangeable, which is the specific risk the research brief
+flags as likely.
+
+| strategy | fit | fit min | below floor | novelty | redundancy | role dup | overlap w/ GD |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| random | 0.546 | 0.344 | 27.9% | 0.501 | 0.325 | 19.9% | 0.1% |
+| metadata (fit only) | **0.758** | 0.750 | 0.0% | 0.440 | 0.554 | 0.0% | 0.4% |
+| nearest neighbour | 0.413 | 0.305 | 62.1% | 0.002 | **0.891** | **96.3%** | 0.0% |
+| inverse similarity | 0.545 | 0.372 | 26.3% | 0.500 | 0.418 | 18.0% | **26.6%** |
+| band, no fit gate | 0.558 | 0.357 | 24.8% | 0.500 | 0.300 | 17.6% | 60.1% |
+| **gold digger** | 0.644 | 0.539 | **0.0%** | 0.500 | 0.316 | 5.7% | — |
+
+**The central claim survives.** Gold Digger and inverse similarity overlap on
+only **26.6%** of returned items (24–29% across the whole DISTANCE range), so
+roughly three-quarters of what the system returns is material that walking
+outward in CLAP space does not surface. "Sorting the similarity list backwards"
+produces a different answer.
+
+**The gate does measurable work.** At the same achieved novelty (0.500), Gold
+Digger holds fit at 0.644 against 0.545 for inverse similarity, and **no
+selection falls below `FIT_FLOOR`** where inverse similarity puts 26.3% below
+it. The ablation isolates this: keeping the novelty band and the diversity term
+but removing only the gate drops fit to 0.558 and pushes 24.8% below the floor,
+changing about 40% of the selection.
+
+**Nearest-neighbour retrieval is actively wrong for this task,** which is the
+most useful negative result here. It scores the *lowest* fit of any strategy —
+below random — because it returns the same role as the context 96.3% of the
+time, and `role_compat` floors same-role at 0.25, which the geometric mean then
+punishes. Its intra-set redundancy is 0.891: eight near-identical items. A
+similarity search hands you another snare when you wanted something to put
+*next to* the snare.
+
+**The metadata baseline is the honest competitor.** It posts the highest fit
+(0.758) by construction, since it optimises fit and nothing else. But its fit
+is flat at 0.758 across every DISTANCE position because it cannot be steered at
+all, its redundancy is 0.554, and its novelty is whatever falls out. It is the
+"compatible but obvious" option — exactly the thing the product exists to
+improve on.
+
+### Fit across the dial
+
+| strategy | 10 | 30 | 50 | 70 | 90 |
+|---|---:|---:|---:|---:|---:|
+| inverse similarity | 0.480 | 0.501 | 0.551 | 0.584 | 0.608 |
+| band, no fit gate | 0.488 | 0.531 | 0.572 | 0.591 | 0.607 |
+| gold digger | 0.615 | 0.635 | 0.651 | 0.655 | 0.663 |
+
+Gold Digger holds a fit advantage at every position, largest at the obvious end
+(0.615 vs 0.480). Fit does not decay as novelty is dialled up — which means the
+dial is not simply trading compatibility away.
+
+**Still missing: a listener.** Every number above is internal to the scoring
+model. `FIT_FLOOR`, `BANDWIDTH` and `REDUNDANCY` remain guesses, and tempo-
+synced audition — the thing that would let anyone judge a result — still does
+not exist.
