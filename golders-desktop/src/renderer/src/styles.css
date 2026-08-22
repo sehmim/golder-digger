@@ -1015,3 +1015,9 @@ button:focus-visible {
   color: var(--ink-faint);
   cursor: not-allowed;
 }
+
+.set-meta--soft {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}

@@ -119,6 +119,7 @@ export default function App(): React.JSX.Element {
                 startIngest={startIngest}
                 sourceCount={readyJobs.length}
                 onBack={() => goTo('sources')}
+                dugSet={set}
                 onDig={(connected) => {
                   setSet(connected)
                   goTo('dig')

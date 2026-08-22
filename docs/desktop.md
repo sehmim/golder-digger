@@ -81,6 +81,13 @@ Essentia per file, so a folder is characterised only when its job says finished 
 advancing on the first finished row would have shown the project step over a corpus that
 was still being written.
 
+**Step 2 is automatic end to end**: resolve the set, ingest whatever it references that
+the corpus lacks, resolve again, then hand over to the dig 1.4s later. The buttons stay
+as manual overrides. Both automations are guarded by refs keyed on the set's path — a
+failed sample cannot loop the auto-ingest, and a set that was already dug never
+auto-advances again, so the dig step's back button actually goes back (`dugSet` prop
+seeds the card and swaps the passive status line for a "Back to digging" button).
+
 **Step 1** starts one job per folder, so each folder gets its own row and its own
 progress. Once a folder is ingested, a **Second opinion** block offers the Essentia pass
 over the same roots. Those jobs share the `IngestJob` row type — `kind` separates them,
