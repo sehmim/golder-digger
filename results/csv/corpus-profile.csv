@@ -1,0 +1,20 @@
+metric,value
+corpus,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples
+files,2043
+chunks,2122
+median_duration_s,6.18
+mean_duration_s,5.41
+max_duration_s,41.1
+pct_under_1s,19.6
+pct_under_2s,22.7
+pct_under_4s,37.4
+pct_under_8s,92.1
+pct_under_12s,98.4
+files_bar_sliced,36
+role_drums,935
+role_harmony,615
+role_bass,212
+role_melody,128
+role_fx,109
+role_texture,69
+role_vocal,54

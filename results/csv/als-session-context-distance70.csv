@@ -1,0 +1,6 @@
+rank,chunk_id,path,role,bpm,tonic,is_major,key_confidence,fit,novelty,H,R,P,distance,fit_floor
+1,44d09e78e0cf:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Triaz Core 01/Hihat Closed/Acoustic/wa-triaz-hihat_closed-acoustic-controlled_brass.wav,drums,90.0,G,1,0.064,0.71,0.7,0.605,0.589,1.0,70.0,0.45
+2,90720432cf5d:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/New Body/Hihat Closed/Synthetic/wa-new_body-hihat_closed-synthetic-fm_sizzles.wav,drums,128.0,D,1,0.019,0.463,0.7,0.601,0.164,1.0,70.0,0.45
+3,fe3181a716b8:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Drift/Rimshot/Dirty/wa-drift-rimshot-dirty-dirty_rimshot_009.wav,drums,90.0,G#,0,0.075,0.71,0.699,0.605,0.589,1.0,70.0,0.45
+4,b791e365682c:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Triaz Core 01/Blocks & Bells/Vintage/wa-triaz-blocks_bells-vintage-808_cowbell_01.wav,melody,140.0,A,1,0.063,0.751,0.702,0.597,0.708,1.0,70.0,0.45
+5,b827e240af4b:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Tape Toys/Crash/Acoustic/wa-tape_toys-crash-acoustic-chinaesque_crash.wav,drums,128.0,C#,1,0.009,0.463,0.699,0.6,0.164,1.0,70.0,0.45

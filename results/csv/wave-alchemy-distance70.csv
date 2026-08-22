@@ -1,0 +1,9 @@
+rank,chunk_id,path,role,bpm,tonic,is_major,key_confidence,fit,novelty,H,R,P,distance,fit_floor
+1,5dcf0c92ad5c:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Triaz Core 01/Foley/Metallic/wa-triaz-foley-metallic-ceramic_01.wav,fx,128.0,C,1,0.033,0.847,0.7,0.605,1.0,1.0,70.0,0.45
+2,1db6d2f37664:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Drift/Ride/Wobbly/wa-drift-ride-wobbly-wobbly_ride_034.wav,drums,90.0,F,0,0.077,0.549,0.7,0.59,0.278,1.0,70.0,0.45
+3,a49a563a23f5:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Triaz Core 01/Perc Electronic/Synthetic/wa-triaz-perc_elec-synthetic-burp.wav,harmony,85.0,F#,1,0.039,0.514,0.7,0.593,0.91,0.25,70.0,0.45
+4,ffb0ec9a4df6:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Triaz Core 01/Claps/Room/wa-triaz-claps-room-md_twisty.wav,drums,90.0,F,1,0.127,0.553,0.7,0.604,0.278,1.0,70.0,0.45
+5,bf12ff0a6dd0:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Drift/Ride/Wobbly/wa-drift-ride-wobbly-wobbly_ride_100.wav,drums,128.0,A,0,0.089,0.86,0.701,0.634,1.0,1.0,70.0,0.45
+6,530cb12bb0fd:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/DNA/Claps/Distant/wa-dna-claps-distant-cp_tbar_dst_04.wav,drums,85.0,F,1,0.06,0.82,0.702,0.604,0.91,1.0,70.0,0.45
+7,787f26cac97e:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/Drift/Hihat Open/Lofi/wa-drift-hihat_open-lofi-lofi_hihat_op_023.wav,drums,120.0,D,0,0.054,0.508,0.7,0.613,0.212,1.0,70.0,0.45
+8,5ce8fe9d76eb:0,/Users/zacharyscheffler/Music/Wave Alchemy/Triaz/Triaz Expansions/DNA/Hand Drum/Conga/wa-dna-hand_drum-conga-con_727_conga_15.wav,drums,85.0,C,1,0.16,0.824,0.702,0.613,0.91,1.0,70.0,0.45
