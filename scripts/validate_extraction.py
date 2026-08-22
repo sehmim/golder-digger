@@ -59,7 +59,10 @@ def main():
                 k_full += right and bool(r["is_major"]) == truth["is_major"]
             (conf_right if right else conf_wrong).append(r["key_confidence"] or 0.0)
 
-    print(f"corpus: {len(rows)} files   mock={config.MOCK}\n")
+    # config.MOCK reflects THIS process, not the ingest that wrote these rows --
+    # printing it as if it described the data has already misreported one run.
+    print(f"corpus: {len(rows)} files   (feature source is whatever "
+          f"GOLDDIGGER_MOCK was set to at ingest time, not now)\n")
     print(f"tempo   labelled={t_n}")
     if t_n:
         print(f"  exact  (±{TOL:.0%})      {t_exact:5d}  {100*t_exact/t_n:5.1f}%   (chance ≈ 3%)")

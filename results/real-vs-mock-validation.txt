@@ -1,0 +1,19 @@
+corpus: 202 files   (feature source is whatever GOLDDIGGER_MOCK was set to at ingest time, not now)
+
+tempo   labelled=52
+  exact  (±2%)         12   23.1%   (chance ≈ 3%)
+  ratio-aware             21   40.4%   (chance ≈ 12%)
+
+key     labelled=167
+  pitch class             64   38.3%   (chance ≈ 8.3%)
+  pitch class + mode      35   21.0%   (chance ≈ 4.2%)
+
+key_confidence   correct=0.1551   wrong=0.0897   separation=+0.0654
+  (a confidence that means anything should be higher when the key is right)
+
+--- same harness on mock features (control, 2043-file corpus) ---
+tempo   exact 6.7%   ratio-aware 16.4%
+key     pitch class 9.3%   pitch class + mode 1.6%
+key_confidence separation -0.0037
+
+Real ingest: 202 files, 0 failed, 73s on MPS (beat-this + LAION-CLAP).

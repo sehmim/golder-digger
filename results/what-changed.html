@@ -1,0 +1,366 @@
+<title>What Changed in Gold Digger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+:root{
+  --ground:#F1F2EE; --surface:#FAFAF7; --sunk:#E4E7DF;
+  --ink:#15181C; --ink-2:#434950; --ink-3:#6E757C;
+  --rule:#D6D9D0; --rule-2:#BFC4B8;
+  --brass:#8E6222;  --brass-bg:#EDE1C9;
+  --verd:#26604F;   --verd-bg:#D6E6DF;
+  --rust:#8A4128;   --rust-bg:#F1DBD3;
+  --slate:#495765;  --slate-bg:#DEE3E8;
+  --lift:0 1px 2px rgba(21,24,28,.05), 0 10px 28px -20px rgba(21,24,28,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#121411; --surface:#1A1D18; --sunk:#0D0F0C;
+    --ink:#ECEEE6; --ink-2:#B4B9AE; --ink-3:#858A7F;
+    --rule:#2B2F28; --rule-2:#3D4239;
+    --brass:#D6A44F; --brass-bg:#3A2E17;
+    --verd:#6FBFA5;  --verd-bg:#16302A;
+    --rust:#D9856A; --rust-bg:#37201A;
+    --slate:#9DB0C2; --slate-bg:#1E262E;
+    --lift:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -22px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121411; --surface:#1A1D18; --sunk:#0D0F0C;
+  --ink:#ECEEE6; --ink-2:#B4B9AE; --ink-3:#858A7F;
+  --rule:#2B2F28; --rule-2:#3D4239;
+  --brass:#D6A44F; --brass-bg:#3A2E17;
+  --verd:#6FBFA5;  --verd-bg:#16302A;
+  --rust:#D9856A;  --rust-bg:#37201A;
+  --slate:#9DB0C2; --slate-bg:#1E262E;
+  --lift:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -22px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif; font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1060px; margin:0 auto; padding:56px 28px 96px}
+h1,h2,h3,.disp{font-family:"Bricolage Grotesque","Helvetica Neue",sans-serif; text-wrap:balance}
+code,.mono,td.num,.tile b{font-family:"JetBrains Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+
+/* ---------- masthead ---------- */
+.eyebrow{
+  font-family:"JetBrains Mono",monospace; font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--ink-3); margin:0 0 18px;
+}
+h1{font-size:clamp(38px,6vw,64px); line-height:1.02; font-weight:700; letter-spacing:-.02em; margin:0 0 20px}
+.standfirst{font-size:20px; line-height:1.55; color:var(--ink-2); max-width:60ch; margin:0 0 30px}
+.provenance{
+  font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--ink-3);
+  border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+  padding:12px 0; display:flex; flex-wrap:wrap; gap:8px 26px; margin-bottom:44px;
+}
+
+/* ---------- section furniture ---------- */
+section{margin-bottom:60px}
+h2{
+  font-size:13px; letter-spacing:.15em; text-transform:uppercase; font-weight:700;
+  color:var(--ink); margin:0 0 6px;
+  font-family:"JetBrains Mono",monospace;
+}
+.sub{color:var(--ink-3); font-size:15px; margin:0 0 22px; max-width:62ch}
+
+/* ---------- stat tiles ---------- */
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:12px}
+.tile{
+  background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+  padding:16px 16px 14px; box-shadow:var(--lift);
+}
+.tile b{display:block; font-size:27px; font-weight:600; letter-spacing:-.02em; line-height:1.1}
+.tile span{display:block; font-size:12.5px; color:var(--ink-3); margin-top:5px; line-height:1.35}
+
+/* ---------- the ledger ---------- */
+.ledger{display:flex; flex-direction:column; gap:0; border-top:1px solid var(--rule-2)}
+.row{
+  display:grid; grid-template-columns:1.05fr 1.35fr auto; gap:22px;
+  padding:20px 0; border-bottom:1px solid var(--rule); align-items:start;
+}
+.row .was{color:var(--ink-2)}
+.row .was strong{
+  display:block; color:var(--ink); font-family:"Bricolage Grotesque",sans-serif;
+  font-weight:700; font-size:17px; margin-bottom:3px;
+}
+.row .was em{font-style:normal; font-size:14.5px; color:var(--ink-3); display:block}
+.row .now{font-size:15.5px; line-height:1.55}
+.row .now .ev{
+  display:block; margin-top:7px; font-family:"JetBrains Mono",monospace;
+  font-size:12px; color:var(--ink-3); line-height:1.5;
+}
+.chip{
+  font-family:"JetBrains Mono",monospace; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; font-weight:600; padding:5px 9px; border-radius:2px;
+  white-space:nowrap; border:1px solid transparent;
+}
+.c-built{color:var(--verd); background:var(--verd-bg)}
+.c-redef{color:var(--brass); background:var(--brass-bg)}
+.c-drop {color:var(--rust); background:var(--rust-bg)}
+.c-none {color:var(--slate); background:var(--slate-bg)}
+
+/* ---------- flip callout ---------- */
+.flip{
+  background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--brass);
+  border-radius:3px; padding:26px 28px; box-shadow:var(--lift);
+}
+.flip h3{margin:0 0 10px; font-size:23px; font-weight:700; letter-spacing:-.01em}
+.flip p{margin:0 0 14px; max-width:64ch}
+.flip p:last-child{margin-bottom:0}
+
+/* ---------- results table ---------- */
+.tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:3px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:520px}
+th,td{padding:11px 16px; text-align:left; border-bottom:1px solid var(--rule)}
+th{
+  font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600; background:var(--sunk);
+}
+tr:last-child td{border-bottom:none}
+td.num{text-align:right; font-size:13.5px}
+.win{color:var(--verd); font-weight:600}
+.flat{color:var(--ink-3)}
+
+/* ---------- sweep chart ---------- */
+figure{margin:0; background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:22px; box-shadow:var(--lift)}
+figcaption{font-size:13.5px; color:var(--ink-3); margin-top:14px; line-height:1.5}
+.chart{width:100%; height:auto; display:block; overflow:visible}
+
+/* ---------- gaps list ---------- */
+.gaps{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px}
+.gap{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:16px 18px}
+.gap h4{
+  margin:0 0 6px; font-family:"Bricolage Grotesque",sans-serif; font-size:16px; font-weight:700;
+  display:flex; align-items:center; gap:9px;
+}
+.gap p{margin:0; font-size:14.5px; color:var(--ink-2); line-height:1.5}
+.must{
+  font-family:"JetBrains Mono",monospace; font-size:9.5px; letter-spacing:.1em;
+  color:var(--rust); background:var(--rust-bg); padding:3px 6px; border-radius:2px; font-weight:600;
+}
+
+/* ---------- caveat ---------- */
+.caveat{
+  background:var(--sunk); border:1px solid var(--rule-2); border-radius:3px;
+  padding:24px 26px;
+}
+.caveat h3{margin:0 0 10px; font-size:19px; font-weight:700}
+.caveat p{margin:0 0 12px; max-width:66ch; color:var(--ink-2)}
+.caveat p:last-child{margin:0}
+.caveat strong{color:var(--ink)}
+
+footer{
+  margin-top:70px; padding-top:22px; border-top:1px solid var(--rule);
+  font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--ink-3); line-height:1.7;
+}
+a{color:var(--brass)}
+:focus-visible{outline:2px solid var(--brass); outline-offset:3px}
+@media (max-width:720px){
+  .row{grid-template-columns:1fr; gap:10px}
+  .wrap{padding:40px 20px 70px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<p class="eyebrow">Gold Digger · status against the original brief</p>
+<h1>What changed since the idea</h1>
+<p class="standfirst">The original brief asked for a fit score, four dials, and a graph database. Two of those three are gone, and the thing the brief mentioned in passing turned out to be the strongest part. Every claim below is a number produced by a command in the repo.</p>
+
+<div class="provenance">
+  <span>branch <b>Dev</b></span>
+  <span>42 tests passing</span>
+  <span>corpus: Roland Samples</span>
+  <span>features: real (beat-this + LAION-CLAP, MPS)</span>
+</div>
+
+<section>
+  <h2>Where it stands</h2>
+  <p class="sub">Measured on this machine, not estimated.</p>
+  <div class="tiles">
+    <div class="tile"><b>2,122</b><span>chunks indexed from 2,043 files</span></div>
+    <div class="tile"><b>202</b><span>files through the real extractors, 0 failed, in 73s</span></div>
+    <div class="tile"><b>437</b><span>Live sets parsed, from 752 found</span></div>
+    <div class="tile"><b>30,912</b><span>sample references across 364 sets</span></div>
+    <div class="tile"><b>1,018</b><span>files self-labelled with a tempo in the filename</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>The brief, line by line</h2>
+  <p class="sub">Left is what the original document asked for. Right is what exists now, and the measurement that drove the change.</p>
+
+  <div class="ledger">
+
+    <div class="row">
+      <div class="was"><strong>Fit Score</strong><em>“92%”, shown per candidate</em></div>
+      <div class="now">Split into two scores, and never shown as a percentage. <b>Fit</b> is an internal gate — the geometric mean of harmony, rhythm and role, so one catastrophic component can’t be masked by two good ones. <b>Novelty</b> is separate.
+        <span class="ev">a single percentage implies a calibration that nothing in the system earns</span></div>
+      <div><span class="chip c-redef">Redefined</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Four dials</strong><em>for user input</em></div>
+      <div class="now">One dial, <b>DISTANCE</b>, redefined from “distance in embedding space” to a <b>target novelty percentile among candidates that already fit</b>. It selects a band, not a radius — DISTANCE 70 means the 70th percentile of non-obviousness, not 0.7 cosine.
+        <span class="ev">raw cosine 0.24 vs 0.48 has no perceptual meaning; a percentile does</span></div>
+      <div><span class="chip c-redef">Redefined</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Graph database</strong><em>for similarity</em></div>
+      <div class="now">Dropped. A graph built by linking each embedding to its nearest neighbours is a discretised copy of the same vector space, and inherits its pathologies. Storage is SQLite plus one NumPy matrix; each query is a single matmul.
+        <span class="ev">at 2,122 chunks the whole corpus loads into a (N, 512) array</span></div>
+      <div><span class="chip c-drop">Dropped</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Chunk by bars</strong><em>especially for long pieces</em></div>
+      <div class="now">Built, and it fires far less than expected. At or under 12s, or with fewer than two downbeats, a file passes through whole — most of a sample library is already the atomic unit.
+        <span class="ev">bar-sliced: 36 of 2,043 files (1.8%) here, 60 of 8,394 (0.7%) on the one-shot library</span></div>
+      <div><span class="chip c-built">Built</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Key, mode, BPM</strong><em>match parts on musical metadata</em></div>
+      <div class="now">Built as <b>soft evidence</b>, never a hard filter. An unconfident key estimate falls back to neutral instead of excluding a candidate, and tempo is ratio-aware so 87 against 174 is a match.
+        <span class="ev">real key estimates now beat chance 4.6× — see the results below</span></div>
+      <div><span class="chip c-built">Built</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>“Vibe”</strong><em>a similarity axis</em></div>
+      <div class="now">A CLAP embedding, but deliberately <b>not</b> used as a similarity ranking. It feeds Novelty only; compatibility is computed from musical features. “Sounds like” and “works with” are treated as different questions.
+        <span class="ev">512-d embedding, L2 norm 1.000, verified on device</span></div>
+      <div><span class="chip c-redef">Redefined</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Modes</strong><em>Ionian, Super Locrian…</em></div>
+      <div class="now">Major and minor only. The seven-mode detection in the brief’s output table isn’t implemented, and the key estimator isn’t accurate enough yet to carry that resolution.
+        <span class="ev">pitch class + mode currently lands 21.0%</span></div>
+      <div><span class="chip c-none">Not built</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Tension · Instrument · Layer? · New Part</strong><em>columns in the output table</em></div>
+      <div class="now">None implemented. Role (drums / bass / melody / harmony / texture / vocal / fx) is assigned by filename keyword, not by a classifier — which is a known weak point, not a finished feature.
+        <span class="ev">on a drum-heavy library, keyword matching put 73% of files in one role</span></div>
+      <div><span class="chip c-none">Not built</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Tempo-synced audition</strong><em>marked MUST, three times</em></div>
+      <div class="now">Not built. The API streams a raw WAV with no time-alignment to the session tempo, so you can’t yet judge the combination — only imagine it. This is the largest gap between the brief and the build.
+        <span class="ev">GET /chunk/{id}/audio returns the clip unmodified</span></div>
+      <div><span class="chip c-none">Not built</span></div>
+    </div>
+
+    <div class="row">
+      <div class="was"><strong>Chromium UI</strong><em>HTML/CSS/JS front end</em></div>
+      <div class="now">Backend only. FastAPI serves the library, analysis, tagging and audio endpoints on :8420; nothing renders them yet.
+        <span class="ev">7 endpoints live, 0 screens</span></div>
+      <div><span class="chip c-none">Not built</span></div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>The one that flipped</h2>
+  <div class="flip">
+    <h3>“This would also work in abandoned projects”</h3>
+    <p>In the original brief that was a closing aside — one sentence after the main pitch. It now looks like the strongest thing in the project, because it is the one capability that the commercial tools in this space don’t have. Ableton, Splice and Output all search libraries. None of them search <em>your own unfinished work</em>.</p>
+    <p>So the digging is now literal. A Live set is gzipped XML, which means an abandoned project can be read without opening it: session tempo, declared key, and every sample it references. Across the archive on this machine that’s <b>437 readable sets holding 30,912 sample references</b> — a corpus of your own history that no sample marketplace can offer.</p>
+    <p>One project alone yielded <b>380 sample references, 371 of which still resolve on disk</b> — even though the set was saved on a Windows machine and every absolute path inside it points at a <code>C:/Users/…</code> directory that doesn’t exist here.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Does the extraction actually work</h2>
+  <p class="sub">The filenames in this library carry their own answers — <code>EP1_Loop01_76_Cm.wav</code> is 76 BPM in C minor. That’s free ground truth for the two fields the extractors are least trusted on. Running the same harness over mock features gives a chance-level control.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Measure</th><th class="num">Chance</th><th class="num">Mock control</th><th class="num">Real extractors</th></tr></thead>
+      <tbody>
+        <tr><td>Tempo, exact (±2%)</td><td class="num flat">3%</td><td class="num flat">6.7%</td><td class="num win">23.1%</td></tr>
+        <tr><td>Tempo, ratio-aware</td><td class="num flat">12%</td><td class="num flat">16.4%</td><td class="num win">40.4%</td></tr>
+        <tr><td>Key, pitch class</td><td class="num flat">8.3%</td><td class="num flat">9.3%</td><td class="num win">38.3%</td></tr>
+        <tr><td>Key, pitch class + mode</td><td class="num flat">4.2%</td><td class="num flat">1.6%</td><td class="num win">21.0%</td></tr>
+        <tr><td>Confidence separation</td><td class="num flat">0</td><td class="num flat">−0.0037</td><td class="num win">+0.0654</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:16px">The last row is the one that matters most. <code>key_confidence</code> is supposed to be high when the key estimate is right and low when it isn’t. On mock features the separation is negative — the number is noise. On real features, correct estimates carry <b>0.155</b> confidence against <b>0.090</b> for wrong ones. The confidence is informative, which is what lets an unsure estimate fall back to neutral instead of poisoning the harmony score.</p>
+</section>
+
+<section>
+  <h2>The dial does what it claims</h2>
+  <figure>
+    <svg class="chart" viewBox="0 0 720 250" role="img" aria-label="Novelty rises linearly with the DISTANCE setting from 0.107 at 10 to 0.902 at 90, while fit stays flat near 0.6, well above the 0.45 floor.">
+      <line x1="60" y1="200" x2="700" y2="200" stroke="var(--rule-2)" stroke-width="1"/>
+      <line x1="60" y1="20"  x2="60"  y2="200" stroke="var(--rule-2)" stroke-width="1"/>
+      <line x1="60" y1="119" x2="700" y2="119" stroke="var(--rust)" stroke-width="1" stroke-dasharray="4 4" opacity=".65"/>
+      <text x="666" y="113" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--rust)">fit floor 0.45</text>
+
+      <polyline points="120,180.7 265,145.8 410,109.8 555,73.5 680,37.6"
+                fill="none" stroke="var(--brass)" stroke-width="2.5"/>
+      <polyline points="120,83.4 265,86.7 410,87.4 555,94.2 680,90.9"
+                fill="none" stroke="var(--verd)" stroke-width="2.5"/>
+
+      <g fill="var(--brass)">
+        <circle cx="120" cy="180.7" r="4"/><circle cx="265" cy="145.8" r="4"/><circle cx="410" cy="109.8" r="4"/>
+        <circle cx="555" cy="73.5" r="4"/><circle cx="680" cy="37.6" r="4"/>
+      </g>
+      <g fill="var(--verd)">
+        <circle cx="120" cy="83.4" r="4"/><circle cx="265" cy="86.7" r="4"/><circle cx="410" cy="87.4" r="4"/>
+        <circle cx="555" cy="94.2" r="4"/><circle cx="680" cy="90.9" r="4"/>
+      </g>
+
+      <g font-family="JetBrains Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="middle">
+        <text x="120" y="217">10</text><text x="265" y="217">30</text><text x="410" y="217">50</text>
+        <text x="555" y="217">70</text><text x="680" y="217">90</text>
+        <text x="380" y="238" fill="var(--ink-3)">DISTANCE setting</text>
+      </g>
+      <g font-family="JetBrains Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="end">
+        <text x="52" y="204">0.0</text><text x="52" y="114">0.5</text><text x="52" y="24">1.0</text>
+      </g>
+      <text x="130" y="32" font-family="Bricolage Grotesque, sans-serif" font-size="12.5" font-weight="700" fill="var(--brass)">novelty achieved</text>
+      <text x="130" y="79" font-family="Bricolage Grotesque, sans-serif" font-size="12.5" font-weight="700" fill="var(--verd)">fit</text>
+    </svg>
+    <figcaption>Ask for the 70th percentile of non-obviousness and you get 0.697. Novelty tracks the request across the whole range while fit stays near 0.6 — the floor-relaxation path never fired, and the lowest single result was 0.526. This is the acceptance property, reproduced on real files rather than fixtures.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>What isn’t answered yet</h2>
+  <div class="caveat">
+    <h3>No baselines exist, so nothing here proves the idea works</h3>
+    <p>Everything above shows the machinery behaves as specified. None of it shows the machinery is <strong>worth building</strong>. The missing comparison is a candidate chosen by progressively farther CLAP neighbours with no compatibility gate at all — “sort the similarity list backwards”. Until DISTANCE is measured against that, and against random and metadata-only selection, the honest status of the central claim is untested.</p>
+    <p>The second missing piece is a listener. Fit and novelty are currently tuned by constants that were guesses — <code>FIT_FLOOR</code>, <code>BANDWIDTH</code>, <code>REDUNDANCY</code>. They can only be set by ear, and nobody has heard a result yet, because tempo-synced audition doesn’t exist.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Next, in order</h2>
+  <div class="gaps">
+    <div class="gap"><h4>Baselines <span class="must">decides everything</span></h4><p>Random, metadata-only, nearest-neighbour, and inverse-similarity — plus the same novelty bands with Fit switched off, to see whether the compatibility layer earns its complexity.</p></div>
+    <div class="gap"><h4>Tempo-synced audition <span class="must">MUST ×3</span></h4><p>Time-align the candidate to the session tempo before playback. Without it nobody can judge a suggestion, so no constant can be tuned.</p></div>
+    <div class="gap"><h4>Finish the real ingest</h4><p>202 of 2,043 files have been through the real extractors, at roughly 0.36s per file. The rest is about 12 minutes of compute.</p></div>
+    <div class="gap"><h4>Role tagging</h4><p>Filename keywords put 73% of a drum library into one bucket. The sample folders are already organised by role — that structure is better evidence than the filenames.</p></div>
+  </div>
+</section>
+
+<footer>
+  Every figure on this page was produced by a command in the repository and can be re-run.<br>
+  Corpus: Roland Samples · 2,043 files · median chunk 6.18s · roles drums 935 / harmony 615 / bass 212 / melody 128 / fx 109 / texture 69 / vocal 54.<br>
+  Extraction: beat-this + LAION-CLAP on MPS. Ground truth parsed from filenames, 50% tempo coverage and 52% key coverage.
+</footer>
+
+</div>

@@ -72,3 +72,33 @@ No baselines exist yet: random, metadata-only, nearest-CLAP-neighbour, and
 inverse-similarity (progressively farther neighbours with no compatibility
 gate). Until the last one is run, nothing here distinguishes this system from
 sorting a similarity list backwards.
+
+## Real extraction, measured against filename ground truth
+
+`real-vs-mock-validation.txt`. 202 files through beat-this + LAION-CLAP on MPS,
+0 failed, 73 s (~0.36 s/file). Scored against BPM and key parsed out of the
+filenames by `scripts/filename_truth.py`, with the same harness run over mock
+features as a chance-level control.
+
+| Measure | chance | mock | real |
+|---|---:|---:|---:|
+| Tempo, exact ±2% | 3% | 6.7% | **23.1%** |
+| Tempo, ratio-aware | 12% | 16.4% | **40.4%** |
+| Key, pitch class | 8.3% | 9.3% | **38.3%** |
+| Key, pitch class + mode | 4.2% | 1.6% | **21.0%** |
+| `key_confidence` separation | 0 | −0.0037 | **+0.0654** |
+
+The last row is the load-bearing one. `key_confidence` claims to be high when
+the key estimate is right; on mock features the separation is negative, i.e.
+the number is noise. On real features correct estimates carry 0.155 against
+0.090 for wrong ones — so the confidence is informative, which is what makes
+`H = c·raw + (1−c)·NEUTRAL` a meaningful fallback rather than an arbitrary one.
+
+Beat-this is clearly fallible: on `EP1_Loop01_76_Cm.wav` it reported 51.7 BPM
+against a filename that says 76. 23.1% exact is well above chance and well
+below trustworthy.
+
+## Page
+
+`what-changed.html` — the original brief line by line against what exists now,
+published at https://claude.ai/code/artifact/5d693ae2-5f09-4687-8aeb-636c66cedea6
