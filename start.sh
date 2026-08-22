@@ -62,9 +62,18 @@ listener_pid() {
 
 [[ -x "$PYTHON" ]] || fail "no venv at $PYTHON — run: uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[dev]'"
 
-if [[ $RUN_FRONTEND -eq 1 && ! -d "$APP/node_modules" ]]; then
+# The bin, not the folder: a half-finished install leaves node_modules in place
+# with an empty .bin, and `npm run dev` then fails with "command not found".
+if [[ $RUN_FRONTEND -eq 1 && ! -x "$APP/node_modules/.bin/electron-vite" ]]; then
   say "installing desktop dependencies"
   (cd "$APP" && npm install)
+fi
+
+# Electron's runtime is a postinstall download, not part of the package. Skipped
+# scripts leave the module in place and electron-vite dies with "Electron uninstall".
+if [[ $RUN_FRONTEND -eq 1 && ! -e "$APP/node_modules/electron/path.txt" ]]; then
+  say "downloading the electron runtime"
+  (cd "$APP" && node node_modules/electron/install.js)
 fi
 
 # ---------------------------------------------------------------- backend
