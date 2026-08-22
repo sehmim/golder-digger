@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from . import config, db, ingest, scoring
+from . import ableton, config, db, ingest, scoring
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -30,7 +31,18 @@ def _corpus():
 # ---------------------------------------------------------------- models
 
 class IngestReq(BaseModel):
-    root: str = Field(..., description="folder (or file) to ingest")
+    root: str | None = Field(None, description="folder (or file) to ingest")
+    roots: list[str] | None = Field(
+        None, description="several folders/files in one job; a Live set's missing samples")
+
+    @model_validator(mode="after")
+    def _one_of(self):
+        if not self.root and not self.roots:
+            raise ValueError("pass root or roots")
+        return self
+
+    def targets(self) -> list[str]:
+        return list(self.roots) if self.roots else [self.root]
 
 
 class AnalyzeReq(BaseModel):
@@ -42,6 +54,10 @@ class AnalyzeReq(BaseModel):
 
 class TagReq(BaseModel):
     role: str
+
+
+class AlsReq(BaseModel):
+    path: str = Field(..., description="a .als on disk")
 
 
 # ---------------------------------------------------------------- routes
@@ -56,11 +72,12 @@ def health():
 @app.post("/ingest")
 async def start_ingest(req: IngestReq):
     conn = state["conn"]
-    job_id = ingest.new_job(conn, req.root)
+    targets = req.targets()
+    job_id = ingest.new_job(conn, targets)
 
     async def _run():
         # extraction is CPU/GPU bound and releases the GIL, so a thread is enough
-        await asyncio.to_thread(ingest.run_job, conn, job_id, req.root)
+        await asyncio.to_thread(ingest.run_job, conn, job_id, targets)
         state["corpus"] = ingest.load_corpus(conn)
 
     asyncio.create_task(_run())
@@ -104,6 +121,74 @@ def analyze(req: AnalyzeReq):
     results, floor = scoring.select(corpus, ctx, req.distance, req.k)
     return {"distance": req.distance, "fit_floor": round(floor, 3),
             "corpus_size": len(corpus), "count": len(results), "results": results}
+
+
+def _session_key(als: dict) -> str | None:
+    """Live's declared key, or None when the set never turned key-awareness on."""
+    root = als.get("scale_root")
+    if root is None or not als.get("in_key"):
+        return None
+    mode = ({True: "maj", False: "min"}.get(als["is_major"])
+            or als.get("scale_name") or f"scale#{als['scale_index']}")
+    return f"{config.PITCH_NAMES[root % 12]} {mode}"
+
+
+def _chunk_digest(conn, chunk_ids: list[str]) -> dict:
+    """What the UI shows for one resolved sample: its role, tempo and key."""
+    if not chunk_ids:
+        return {"chunks": 0, "role": None, "bpm": None, "tonic": None}
+    marks = ",".join("?" * len(chunk_ids))
+    rows = conn.execute(
+        f"SELECT bpm, tonic_pc, role FROM chunks WHERE chunk_id IN ({marks})",
+        chunk_ids).fetchall()
+    roles = [r["role"] for r in rows if r["role"]]
+    bpms = [r["bpm"] for r in rows if r["bpm"] is not None]
+    tonics = [r["tonic_pc"] for r in rows if r["tonic_pc"] is not None and r["tonic_pc"] >= 0]
+    return {
+        "chunks": len(rows),
+        "role": max(set(roles), key=roles.count) if roles else None,
+        "bpm": round(sum(bpms) / len(bpms), 1) if bpms else None,
+        "tonic": config.PITCH_NAMES[max(set(tonics), key=tonics.count)] if tonics else None,
+    }
+
+
+@app.post("/session/als")
+def session_als(req: AlsReq):
+    """Parse a Live set and resolve its samples against the corpus.
+
+    `unmatched` entries carry `ingest_path` when the file is on disk but absent
+    from the corpus -- those are exactly the roots to feed back into POST /ingest.
+    """
+    conn = state["conn"]
+    if not os.path.isfile(req.path):
+        raise HTTPException(404, f"no such file: {req.path}")
+    try:
+        als = ableton.load_als(req.path)
+    except ableton.UnreadableSet as exc:
+        raise HTTPException(400, str(exc))
+
+    res = ableton.resolve(conn, als)
+
+    matched = [{**m, **_chunk_digest(conn, m["chunk_ids"])} for m in res["matched"]]
+    unmatched = []
+    for u in res["unmatched"]:
+        on_disk = next((c for c in u["candidates"] if os.path.isfile(c)), None)
+        unmatched.append({**u, "ingest_path": on_disk})
+
+    return {
+        "session": {
+            "name": os.path.splitext(os.path.basename(als["path"]))[0],
+            "path": als["path"],
+            "creator": als["creator"],
+            "tempo": als["tempo"],
+            "key": _session_key(als),
+            "in_key": als["in_key"],
+            "samples": len(als["samples"]),
+        },
+        "matched": matched,
+        "unmatched": unmatched,
+        "context_ids": res["context_ids"],
+    }
 
 
 @app.post("/chunk/{chunk_id}/tag")

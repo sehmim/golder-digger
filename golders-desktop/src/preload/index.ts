@@ -1,5 +1,33 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { IpcRendererEvent } from 'electron'
 
 contextBridge.exposeInMainWorld('desktop', {
-  selectDirectories: (): Promise<string[]> => ipcRenderer.invoke('directory:select')
+  selectDirectories: (): Promise<string[]> => ipcRenderer.invoke('directory:select'),
+  selectProject: (): Promise<string | null> => ipcRenderer.invoke('project:select'),
+
+  apiStatus: () => ipcRenderer.invoke('api:status'),
+  startIngest: (roots: string[]): Promise<string> => ipcRenderer.invoke('ingest:start', roots),
+  loadSet: (path: string) => ipcRenderer.invoke('session:load', path),
+  analyze: (contextIds: string[], distance: number, k: number) =>
+    ipcRenderer.invoke('session:analyze', contextIds, distance, k),
+  chunkAudio: (chunkId: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('chunk:audio', chunkId),
+
+  onIngestProgress: (handler: (status: unknown) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, status: unknown): void => handler(status)
+    ipcRenderer.on('ingest:progress', listener)
+    return () => ipcRenderer.off('ingest:progress', listener)
+  },
+
+  onIngestError: (handler: (payload: unknown) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, payload: unknown): void => handler(payload)
+    ipcRenderer.on('ingest:error', listener)
+    return () => ipcRenderer.off('ingest:error', listener)
+  },
+
+  onApiReady: (handler: (status: unknown) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, status: unknown): void => handler(status)
+    ipcRenderer.on('api:ready', listener)
+    return () => ipcRenderer.off('api:ready', listener)
+  }
 })
