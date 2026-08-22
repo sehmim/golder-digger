@@ -1,24 +1,41 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIngest } from './lib/useIngest'
-import type { ApiStatus } from './lib/api'
+import type { ApiStatus, SessionSet } from './lib/api'
 import SourcesStep from './steps/SourcesStep'
 import ProjectStep from './steps/ProjectStep'
+import DigStep from './steps/DigStep'
 
-type Phase = 'sources' | 'advancing' | 'project'
+type Step = 'sources' | 'project' | 'dig'
+
+const ORDER: Step[] = ['sources', 'project', 'dig']
+const STEPS = ['Samples', 'Project', 'Dig'] as const
 
 const ADVANCE_DELAY_MS = 520
 const ADVANCE_DURATION_MS = 700
 
-const STEPS = ['Samples', 'Project'] as const
-
 export default function App(): React.JSX.Element {
   const { jobs, startIngest, dismissJob, clearJobs, error } = useIngest()
-  const [phase, setPhase] = useState<Phase>('sources')
+  const [step, setStep] = useState<Step>('sources')
+  // The step on its way out, kept mounted for the length of the handoff.
+  const [leaving, setLeaving] = useState<Step | null>(null)
+  const [set, setSet] = useState<SessionSet | null>(null)
   const [hasReachedProject, setHasReachedProject] = useState(false)
   const [api, setApi] = useState<ApiStatus>({ ready: false, error: null })
+
   const hasAdvanced = useRef(false)
+  const handoff = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const readyJobs = jobs.filter((job) => job.state === 'finished')
+
+  const goTo = useCallback((next: Step) => {
+    setStep((current) => {
+      if (current === next) return current
+      setLeaving(current)
+      if (handoff.current) clearTimeout(handoff.current)
+      handoff.current = setTimeout(() => setLeaving(null), ADVANCE_DURATION_MS)
+      return next
+    })
+  }, [])
 
   // Python boots after the window paints, so its readiness arrives either way.
   useEffect(() => {
@@ -33,16 +50,9 @@ export default function App(): React.JSX.Element {
 
     hasAdvanced.current = true
     setHasReachedProject(true)
-    const start = setTimeout(() => setPhase('advancing'), ADVANCE_DELAY_MS)
+    const start = setTimeout(() => goTo('project'), ADVANCE_DELAY_MS)
     return () => clearTimeout(start)
-  }, [readyJobs.length])
-
-  useEffect(() => {
-    if (phase !== 'advancing') return
-
-    const finish = setTimeout(() => setPhase('project'), ADVANCE_DURATION_MS)
-    return () => clearTimeout(finish)
-  }, [phase])
+  }, [readyJobs.length, goTo])
 
   async function chooseDirectories(): Promise<void> {
     const directories = await window.desktop.selectDirectories()
@@ -56,7 +66,13 @@ export default function App(): React.JSX.Element {
     clearJobs()
   }
 
-  const stepIndex = phase === 'sources' ? 0 : 1
+  function panelClass(candidate: Step): string {
+    if (candidate === leaving) return 'panel panel--leaving'
+    return leaving ? 'panel panel--entering' : 'panel'
+  }
+
+  const stepIndex = ORDER.indexOf(step)
+  const shown = ORDER.filter((candidate) => candidate === step || candidate === leaving)
 
   return (
     <main className="page">
@@ -73,31 +89,39 @@ export default function App(): React.JSX.Element {
         ))}
       </nav>
 
-      <div className="stage" data-phase={phase}>
-        {phase !== 'project' ? (
-          <div className={`panel${phase === 'advancing' ? ' panel--leaving' : ''}`}>
-            <SourcesStep
-              jobs={jobs}
-              apiReady={api.ready}
-              canContinue={hasReachedProject && readyJobs.length > 0}
-              onChoose={() => void chooseDirectories()}
-              onDismiss={dismissJob}
-              onClear={clearAll}
-              onContinue={() => setPhase('project')}
-            />
-          </div>
-        ) : null}
+      <div className="stage" data-step={step}>
+        {shown.map((candidate) => (
+          <div key={candidate} className={panelClass(candidate)}>
+            {candidate === 'sources' ? (
+              <SourcesStep
+                jobs={jobs}
+                apiReady={api.ready}
+                canContinue={hasReachedProject && readyJobs.length > 0}
+                onChoose={() => void chooseDirectories()}
+                onDismiss={dismissJob}
+                onClear={clearAll}
+                onContinue={() => goTo('project')}
+              />
+            ) : null}
 
-        {phase !== 'sources' ? (
-          <div className={`panel${phase === 'advancing' ? ' panel--entering' : ''}`}>
-            <ProjectStep
-              ingestJobs={jobs}
-              startIngest={startIngest}
-              sourceCount={readyJobs.length}
-              onBack={() => setPhase('sources')}
-            />
+            {candidate === 'project' ? (
+              <ProjectStep
+                ingestJobs={jobs}
+                startIngest={startIngest}
+                sourceCount={readyJobs.length}
+                onBack={() => goTo('sources')}
+                onDig={(connected) => {
+                  setSet(connected)
+                  goTo('dig')
+                }}
+              />
+            ) : null}
+
+            {candidate === 'dig' && set ? (
+              <DigStep set={set} onBack={() => goTo('project')} />
+            ) : null}
           </div>
-        ) : null}
+        ))}
       </div>
 
       {api.error ? <p className="error banner">{api.error}</p> : null}

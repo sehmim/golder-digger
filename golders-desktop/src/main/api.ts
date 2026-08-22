@@ -41,6 +41,28 @@ export interface SessionSample {
   ingest_path?: string | null
 }
 
+/** One row of the results list: a chunk the engine picked for the context. */
+export interface Candidate {
+  chunk_id: string
+  path: string
+  role: string | null
+  bpm: number | null
+  tonic: string | null
+  is_major: boolean
+  key_confidence: number
+  fit: number
+  novelty: number
+  components: { H: number; R: number; P: number }
+}
+
+export interface AnalyzeResult {
+  distance: number
+  fit_floor: number
+  corpus_size: number
+  count: number
+  results: Candidate[]
+}
+
 export interface SessionSet {
   session: {
     name: string
@@ -167,9 +189,19 @@ export function loadSet(path: string): Promise<SessionSet> {
   return request('/session/als', { method: 'POST', body: JSON.stringify({ path }) })
 }
 
-export function analyze(contextIds: string[], distance: number, k: number): Promise<unknown> {
+export function analyze(contextIds: string[], distance: number, k: number): Promise<AnalyzeResult> {
   return request('/session/analyze', {
     method: 'POST',
     body: JSON.stringify({ context_ids: contextIds, distance, k })
   })
+}
+
+/**
+ * The chunk's audio as bytes, not a URL: the renderer has no route to the API,
+ * and a media element pointing at localhost would be a second way in.
+ */
+export async function chunkAudio(chunkId: string): Promise<ArrayBuffer> {
+  const response = await fetch(`${BASE}/chunk/${encodeURIComponent(chunkId)}/audio`)
+  if (!response.ok) throw new Error(`${response.status} could not render ${chunkId}`)
+  return response.arrayBuffer()
 }

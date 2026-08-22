@@ -9,12 +9,7 @@ interface ProjectStepProps {
   startIngest: (roots: string[], label?: string) => Promise<string>
   sourceCount: number
   onBack: () => void
-}
-
-interface AnalyzeResult {
-  count: number
-  fit_floor: number
-  corpus_size: number
+  onDig: (set: SessionSet) => void
 }
 
 function matchedMeta(sample: SessionSample): string {
@@ -34,21 +29,20 @@ export default function ProjectStep({
   ingestJobs,
   startIngest,
   sourceCount,
-  onBack
+  onBack,
+  onDig
 }: ProjectStepProps): React.JSX.Element {
   const [set, setSet] = useState<SessionSet | null>(null)
   const [reading, setReading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
-  const [analysis, setAnalysis] = useState<AnalyzeResult | null>(null)
 
   const job = ingestJobs.find((candidate) => candidate.jobId === jobId) ?? null
 
   const load = useCallback(async (path: string) => {
     setReading(true)
     setError(null)
-    setAnalysis(null)
 
     try {
       setSet(await window.desktop.loadSet(path))
@@ -85,17 +79,6 @@ export default function ProjectStep({
     setJobId(
       await startIngest(paths, `${paths.length} ${paths.length === 1 ? 'sample' : 'samples'}`)
     )
-  }
-
-  async function startDigging(): Promise<void> {
-    if (!set || set.context_ids.length === 0) return
-
-    setError(null)
-    try {
-      setAnalysis((await window.desktop.analyze(set.context_ids, 50, 12)) as AnalyzeResult)
-    } catch (cause) {
-      setError(String(cause instanceof Error ? cause.message : cause))
-    }
   }
 
   const missing = set?.unmatched.filter((sample) => sample.ingest_path).length ?? 0
@@ -215,19 +198,12 @@ export default function ProjectStep({
             className="primary-button primary-button--wide"
             type="button"
             disabled={set.context_ids.length === 0}
-            onClick={() => void startDigging()}
+            onClick={() => set && onDig(set)}
           >
             {set.context_ids.length === 0
               ? 'No samples resolved yet'
               : `Start digging · ${set.context_ids.length} context chunks`}
           </button>
-
-          {analysis ? (
-            <p className="analysis">
-              Ranked {analysis.count} candidates from {analysis.corpus_size} chunks · fit floor{' '}
-              {analysis.fit_floor}
-            </p>
-          ) : null}
         </div>
       )}
 

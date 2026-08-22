@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('desktop', {
   loadSet: (path: string) => ipcRenderer.invoke('session:load', path),
   analyze: (contextIds: string[], distance: number, k: number) =>
     ipcRenderer.invoke('session:analyze', contextIds, distance, k),
+  chunkAudio: (chunkId: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('chunk:audio', chunkId),
 
   onIngestProgress: (handler: (status: unknown) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, status: unknown): void => handler(status)

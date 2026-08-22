@@ -32,6 +32,28 @@ export interface SessionSample {
   ingest_path?: string | null
 }
 
+/** One row of the results list: a chunk the engine picked for the context. */
+export interface Candidate {
+  chunk_id: string
+  path: string
+  role: string | null
+  bpm: number | null
+  tonic: string | null
+  is_major: boolean
+  key_confidence: number
+  fit: number
+  novelty: number
+  components: { H: number; R: number; P: number }
+}
+
+export interface AnalyzeResult {
+  distance: number
+  fit_floor: number
+  corpus_size: number
+  count: number
+  results: Candidate[]
+}
+
 export interface SessionSet {
   session: {
     name: string

@@ -717,3 +717,241 @@ button:focus-visible {
   margin: 18px auto 0;
   text-align: center;
 }
+
+/* ---------------------------------------------------------------- dig */
+
+.stage[data-step='dig'] {
+  width: min(100%, 560px);
+}
+
+.dig {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.pedal {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: 0;
+  padding: 22px 20px 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fdfcf9 0%, var(--card) 46%);
+  box-shadow: 0 14px 40px rgb(38 35 25 / 9%), inset 0 1px 0 #ffffff;
+  animation: panel-in 380ms cubic-bezier(0.16, 0.9, 0.3, 1) both;
+}
+
+.pedal-head {
+  margin-bottom: 6px;
+}
+
+.pedal-head .eyebrow {
+  margin-bottom: 6px;
+}
+
+.pedal-head .set-name,
+.pedal-head .set-meta {
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- knob */
+
+.knob-well {
+  position: relative;
+  display: grid;
+  width: 200px;
+  height: 200px;
+  place-items: center;
+}
+
+.knob-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.knob-tick {
+  position: absolute;
+  left: calc(50% - 1px);
+  top: 50%;
+  width: 2px;
+  height: 9px;
+  border-radius: 1px;
+  background: #d9d5c9;
+  transform-origin: 50% 0;
+  transition: background 200ms ease;
+}
+
+.knob-tick[data-on='true'] {
+  background: var(--gold);
+}
+
+.knob {
+  position: relative;
+  display: grid;
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  /* the machined look: light from above, a lip, and a shadow it sits in */
+  background: radial-gradient(circle at 50% 26%, #3a3830 0%, #1c1b17 62%, #121110 100%);
+  box-shadow: 0 10px 22px rgb(24 22 16 / 32%), inset 0 1px 0 rgb(255 255 255 / 14%),
+    0 0 0 1px #0f0e0c;
+  cursor: grab;
+  place-items: center;
+  touch-action: none;
+  user-select: none;
+}
+
+.knob:active {
+  cursor: grabbing;
+}
+
+.knob:focus-visible {
+  outline: 3px solid rgb(167 123 23 / 35%);
+  outline-offset: 5px;
+}
+
+.knob-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transition: transform 190ms cubic-bezier(0.25, 1.4, 0.4, 1);
+}
+
+.knob-pointer {
+  position: absolute;
+  left: calc(50% - 2px);
+  top: 10px;
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--gold);
+  box-shadow: 0 0 10px rgb(196 148 40 / 55%);
+}
+
+.knob-value {
+  color: #efe9d9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  pointer-events: none;
+}
+
+.knob-label {
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.knob-caption {
+  margin: 6px 0 18px;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
+/* ---------------------------------------------------------------- results */
+
+.results {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfaf6;
+  overflow: hidden;
+  text-align: left;
+  transition: opacity 160ms ease;
+}
+
+.results[data-working] {
+  opacity: 0.55;
+}
+
+.results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--line-soft);
+  color: #8a867d;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.result-list {
+  display: grid;
+  max-height: 300px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.result-list li {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 4px;
+  border-radius: 8px;
+  grid-template-columns: 32px minmax(0, 1fr) 66px;
+  animation: row-in 240ms ease both;
+}
+
+.result-list li:hover {
+  background: #f4f2ec;
+}
+
+.result-list li[data-playing] {
+  background: rgb(167 123 23 / 9%);
+}
+
+.play-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  cursor: pointer;
+  place-items: center;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.play-button:hover {
+  border-color: var(--gold);
+}
+
+.play-button svg {
+  width: 15px;
+  fill: none;
+  stroke: var(--gold-deep);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.result-list li[data-playing] .play-button {
+  border-color: var(--gold);
+  background: rgb(167 123 23 / 12%);
+}
+
+.result-list li[data-playing] .play-button svg {
+  fill: var(--gold-deep);
+}
+
+.role-none {
+  color: var(--ink-faint);
+}
+
+.dig .hint {
+  padding: 0 13px 12px;
+}

@@ -89,7 +89,9 @@ Three things that explain most of the code:
 
 3. **The renderer never speaks HTTP.** Electron main owns the child process and the
    fetch client; the renderer only sees `window.desktop.*` over IPC. This keeps
-   `contextIsolation` intact and sidesteps CORS entirely — a browser-side fetch to the
+   `contextIsolation` intact and sidesteps CORS entirely. Chunk previews follow the same
+   rule: `/chunk/{id}/audio` is fetched in main and the bytes cross IPC, rather than
+   pointing a media element at localhost — a browser-side fetch to the
    API is blocked, which is a real trap when previewing the renderer outside Electron.
    See `docs/desktop.md`.
 

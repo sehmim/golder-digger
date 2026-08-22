@@ -107,6 +107,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('session:load', (_event, path: string) => api.loadSet(path))
 
+  ipcMain.handle('chunk:audio', (_event, chunkId: string) => api.chunkAudio(chunkId))
+
   ipcMain.handle(
     'session:analyze',
     (_event, contextIds: string[], distance: number, k: number) =>

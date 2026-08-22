@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { ApiStatus, SessionSet } from './lib/api'
+import type { AnalyzeResult, ApiStatus, SessionSet } from './lib/api'
 
 declare global {
   interface Window {
@@ -11,7 +11,8 @@ declare global {
       apiStatus: () => Promise<ApiStatus>
       startIngest: (roots: string[]) => Promise<string>
       loadSet: (path: string) => Promise<SessionSet>
-      analyze: (contextIds: string[], distance: number, k: number) => Promise<unknown>
+      analyze: (contextIds: string[], distance: number, k: number) => Promise<AnalyzeResult>
+      chunkAudio: (chunkId: string) => Promise<ArrayBuffer>
 
       onIngestProgress: (handler: (status: unknown) => void) => () => void
       onIngestError: (handler: (payload: unknown) => void) => () => void
