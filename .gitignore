@@ -9,3 +9,11 @@ __pycache__/
 golddigger-genai/*
 .promptvc
 .logs/
+
+# local soundbank used for ingest/analysis testing — everyone points this at their own sounds;
+# folder itself is tracked (empty) so it exists after clone, contents are not
+soundbank/*
+!soundbank/.gitkeep
+
+# raw Essentia extractor output; the useful parts are merged into the database
+essentia.json

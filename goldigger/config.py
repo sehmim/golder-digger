@@ -11,6 +11,7 @@ CLAP_MODEL = "laion/larger_clap_music_and_speech"
 CLAP_DIM = 512
 CLAP_WINDOW_SEC = 10.0      # CLAP audio branch window
 CLAP_BATCH = 16
+HOP_LENGTH = 512           # onset envelope / autocorrelation frame hop
 AUDIO_EXTS = {".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".m4a"}
 
 # --- chunking ---
@@ -56,6 +57,43 @@ ROLE_KEYWORDS = {
     "fx":      ["fx", "riser", "sweep", "impact", "downlifter", "uplifter",
                 "transition", "whoosh", "foley"],
 }
+# --- zero-shot tagging ---
+# CLAP projects audio and text into one space, so a fixed vocabulary turns an
+# embedding into readable tags. Softmax over the vocabulary's similarities (not
+# raw cosine, which has no stable scale) gives one clip's tags a distribution
+# summing to 1. Every ROLE is reachable from some tag, so a library named by
+# catalogue number still gets classified when the filename says nothing.
+TAG_VOCAB = [
+    "a kick drum", "a hi-hat", "a snare drum", "a drum loop / groove",
+    "a percussive one-shot",
+    "a bass sound", "a sub bass",
+    "a lead synth melody", "a plucked melodic instrument",
+    "a synth pad", "a warm analog pad", "a string pad", "an acoustic guitar",
+    "a piano",
+    "an ambient texture or drone", "a field recording",
+    "a vocal / acapella", "a choir",
+    "a riser or sweep effect", "an impact or transition effect",
+    "a dark and moody sound", "a bright and airy sound",
+    "a distorted or gritty sound", "a clean and pure tone",
+]
+TAG_TO_ROLE = {
+    "a kick drum": "drums", "a hi-hat": "drums", "a snare drum": "drums",
+    "a drum loop / groove": "drums", "a percussive one-shot": "drums",
+    "a bass sound": "bass", "a sub bass": "bass",
+    "a lead synth melody": "melody", "a plucked melodic instrument": "melody",
+    "a synth pad": "harmony", "a warm analog pad": "harmony",
+    "a string pad": "harmony", "an acoustic guitar": "harmony", "a piano": "harmony",
+    "an ambient texture or drone": "texture", "a field recording": "texture",
+    "a vocal / acapella": "vocal", "a choir": "vocal",
+    "a riser or sweep effect": "fx", "an impact or transition effect": "fx",
+    # timbre words describe the sound but name no role -- deliberately unmapped
+    "a dark and moody sound": None, "a bright and airy sound": None,
+    "a distorted or gritty sound": None, "a clean and pure tone": None,
+}
+TAG_TEMPERATURE = 0.10      # sharp enough that a clear winner reads as one
+TAG_TOP_N = 5               # how many tags are kept per chunk
+TAG_ROLE_MIN_PROB = 0.30    # below this the classifier abstains instead of guessing
+
 # Pairs that are *different* roles but still compete for the same space.
 NEUTRAL_ROLE_PAIRS = {
     frozenset(("melody", "vocal")),      # both want the lead

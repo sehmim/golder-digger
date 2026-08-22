@@ -42,5 +42,27 @@ def clap(key: str) -> np.ndarray:
     return (v / np.linalg.norm(v)).astype(np.float32)
 
 
-def role(key: str) -> str:
-    return str(_rng(key + ":role").choice(config.ROLES))
+
+def tag_sims(key: str) -> np.ndarray:
+    """Similarities with one clear winner, so tags_from_sims -- the real
+    function -- produces a realistically peaked distribution."""
+    r = _rng(key + ":tags")
+    sims = r.uniform(-0.05, 0.15, len(config.TAG_VOCAB))
+    sims[int(r.integers(0, len(config.TAG_VOCAB)))] += 0.30
+    return sims
+
+
+def confidences(key: str) -> tuple[float, float]:
+    """(tonalness, tempo_confidence) -- plausible spreads, not all-1.0."""
+    r = _rng(key + ":conf")
+    return float(r.uniform(0.02, 0.95)), float(r.uniform(0.0, 0.9))
+
+
+def spectral(key: str) -> dict:
+    r = _rng(key + ":spectral")
+    ranges = {"centroid": (400, 6000), "rolloff": (800, 11000),
+              "bandwidth": (300, 4000), "flatness": (1e-4, 0.4),
+              "rms": (0.01, 0.4), "zcr": (0.01, 0.35)}
+    return {k: {"mean": float(r.uniform(*lohi)),
+                "confidence": float(r.uniform(0.25, 0.98))}
+            for k, lohi in ranges.items()}

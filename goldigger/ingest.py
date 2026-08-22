@@ -44,6 +44,17 @@ def walk_all(roots) -> list[Path]:
                 seen.add(str(path))
                 out.append(path)
     return out
+def _role_or_tags(role, role_source, tags) -> tuple[str | None, str]:
+    """Filename first, tag classifier second.
+
+    A filename that names its role is a human's own label and outranks a model;
+    the classifier only speaks when the filename said nothing, which is most of
+    any library organised by catalogue number.
+    """
+    if role:
+        return role, role_source
+    inferred = features.role_from_tags(tags)
+    return (inferred, "clap") if inferred else (None, "unknown")
 
 
 def analyze_file(path: Path) -> list[dict]:
@@ -58,20 +69,22 @@ def analyze_file(path: Path) -> list[dict]:
         except Exception:
             duration = 8.0
         rhythm = mock.rhythm(fh)
-        role = role or mock.role(fh)
-        role_source = role_source if role_source != "unknown" else "mock"
         spans = features.chunk_boundaries(duration, rhythm)
         rows = []
         for i, (t0, t1) in enumerate(spans):
             cid = f"{fh[:12]}:{i}"
             ch = mock.chroma(cid)
-            pc, maj, conf = features.estimate_key(ch)
+            tonal, tconf = mock.confidences(cid)
+            pc, maj, conf = features.estimate_key(ch, gate=tonal)
+            tags = features.tags_from_sims(mock.tag_sims(cid))
+            r, src = _role_or_tags(role, role_source, tags)
             rows.append(dict(
                 chunk_id=cid, path=str(path), file_hash=fh, chunk_index=i,
                 t_start=t0, t_end=t1, bpm=rhythm["bpm"],
                 beats_per_bar=rhythm["beats_per_bar"],
                 tonic_pc=pc, is_major=maj, key_confidence=conf,
-                role=role, role_source=role_source,
+                role=r, role_source=src, tonalness=tonal, tempo_confidence=tconf,
+                spectral=mock.spectral(cid), tags=tags,
                 chroma=ch, clap=mock.clap(cid)))
         return rows
 
@@ -81,21 +94,37 @@ def analyze_file(path: Path) -> list[dict]:
     spans = features.chunk_boundaries(duration, rhythm)
 
     import librosa
+    # one HPSS pass per file, sliced per chunk: the separation needs surrounding
+    # context to be meaningful, and it is far too slow to repeat per chunk
+    y_harm, y_perc = features.hpss_split(y)
+
     rows, clips = [], []
     for i, (t0, t1) in enumerate(spans):
-        seg = y[int(t0 * sr):int(t1 * sr)]
-        ch = features.chroma_vector(seg, sr)
-        pc, maj, conf = features.estimate_key(ch)
+        a, b = int(t0 * sr), int(t1 * sr)
+        seg, seg_h, seg_p = y[a:b], y_harm[a:b], y_perc[a:b]
+        tonal = features.hpss_tonalness(harmonic=seg_h, percussive=seg_p)
+        # chroma off the harmonic signal only: percussive transients pollute it,
+        # and on the reference set this moved match strength 0.71->0.85 and
+        # 0.70->0.92 and corrected one outright wrong key
+        ch = features.chroma_vector(seg_h, sr)
+        pc, maj, conf = features.estimate_key(ch, gate=tonal)
         rows.append(dict(
             chunk_id=f"{fh[:12]}:{i}", path=str(path), file_hash=fh, chunk_index=i,
             t_start=t0, t_end=t1, bpm=rhythm["bpm"],
             beats_per_bar=rhythm["beats_per_bar"],
             tonic_pc=pc, is_major=maj, key_confidence=conf,
-            role=role, role_source=role_source, chroma=ch, clap=None))
+            role=role, role_source=role_source, tonalness=tonal,
+            tempo_confidence=features.tempo_confidence(seg, sr, rhythm["bpm"]),
+            spectral=features.spectral_stats(seg, sr), tags=None,
+            chroma=ch, clap=None))
         clips.append(librosa.resample(seg, orig_sr=sr, target_sr=config.CLAP_SR))
 
-    for row, vec in zip(rows, _clap_model().embed_audio(clips)):
+    clap = _clap_model()
+    vecs = clap.embed_audio(clips)
+    for row, vec, tags in zip(rows, vecs, clap.tags(vecs)):
         row["clap"] = vec
+        row["tags"] = tags
+        row["role"], row["role_source"] = _role_or_tags(role, role_source, tags)
     return rows
 
 
@@ -103,15 +132,24 @@ def upsert(conn, rows):
     conn.executemany(
         """INSERT INTO chunks (chunk_id, path, file_hash, chunk_index, t_start, t_end,
                                bpm, beats_per_bar, tonic_pc, is_major, key_confidence,
-                               role, role_source, chroma, clap)
+                               role, role_source, chroma, clap,
+                               tempo_confidence, tonalness, spectral, tags)
            VALUES (:chunk_id,:path,:file_hash,:chunk_index,:t_start,:t_end,:bpm,
                    :beats_per_bar,:tonic_pc,:is_major,:key_confidence,:role,
-                   :role_source,:chroma,:clap)
+                   :role_source,:chroma,:clap,
+                   :tempo_confidence,:tonalness,:spectral,:tags)
            ON CONFLICT(chunk_id) DO UPDATE SET
              bpm=excluded.bpm, tonic_pc=excluded.tonic_pc, is_major=excluded.is_major,
              key_confidence=excluded.key_confidence, role=excluded.role,
-             chroma=excluded.chroma, clap=excluded.clap""",
-        [{**r, "chroma": db.to_blob(r["chroma"]), "clap": db.to_blob(r["clap"])}
+             role_source=excluded.role_source, chroma=excluded.chroma,
+             clap=excluded.clap, tempo_confidence=excluded.tempo_confidence,
+             tonalness=excluded.tonalness, spectral=excluded.spectral,
+             tags=excluded.tags""",
+        [{**r,
+          "chroma": db.to_blob(r["chroma"]),
+          "clap": db.to_blob(r["clap"]),
+          "spectral": json.dumps(r["spectral"]) if r["spectral"] else None,
+          "tags": json.dumps(r["tags"]) if r["tags"] else None}
          for r in rows])
     conn.commit()
 

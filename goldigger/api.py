@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import json
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -96,7 +97,8 @@ def ingest_status(job_id: str):
 def library(limit: int = Query(100, le=1000), offset: int = 0,
             role: str | None = None):
     sql = ("SELECT chunk_id, path, chunk_index, t_start, t_end, bpm, beats_per_bar,"
-           " tonic_pc, is_major, key_confidence, role, role_source FROM chunks")
+           " tonic_pc, is_major, key_confidence, role, role_source,"
+           " tempo_confidence, tonalness, spectral, tags FROM chunks")
     args: list = []
     if role:
         sql += " WHERE role=?"
@@ -107,6 +109,9 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
     for r in rows:
         r["tonic"] = (config.PITCH_NAMES[r["tonic_pc"]]
                       if r["tonic_pc"] is not None and r["tonic_pc"] >= 0 else None)
+        # stored as JSON text; hand the client objects, not strings
+        for k in ("spectral", "tags"):
+            r[k] = json.loads(r[k]) if r[k] else None
     total = state["conn"].execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
     return {"total": total, "count": len(rows), "chunks": rows}
 
