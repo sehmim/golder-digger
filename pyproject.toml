@@ -6,7 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
   "fastapi", "uvicorn", "pydantic",
   "numpy", "librosa", "soundfile",
-  "torch", "torchaudio", "transformers",
+  "torch", "torchaudio",
+  # pinned: 5.15 is what the CLAP paths here are written against.
+  # get_audio_features returns BaseModelOutputWithPooling (read .pooler_output,
+  # not the object), and the processor's audio argument is `audio=` -- `audios=`
+  # raises. Both have moved before; a major bump would move them again.
+  "transformers>=5.15,<6",
   "beat-this",
 ]
 
