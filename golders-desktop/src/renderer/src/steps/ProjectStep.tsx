@@ -14,11 +14,22 @@ interface ProjectStepProps {
 
 function matchedMeta(sample: SessionSample): string {
   const parts = [`${sample.chunks} ${sample.chunks === 1 ? 'chunk' : 'chunks'}`]
-  if (sample.role) parts.push(sample.role)
+  // The classifier's guess is marked; a role read off the filename is not.
+  if (sample.role) parts.push(sample.role_source === 'clap' ? `${sample.role}?` : sample.role)
   if (sample.bpm) parts.push(`${sample.bpm} BPM`)
   if (sample.tonic) parts.push(sample.tonic)
   parts.push(`${sample.method} match`)
   return parts.join(' · ')
+}
+
+/** Essentia only earns a line when it actually says something. */
+function secondOpinion(sample: SessionSample): string | null {
+  const view = sample.essentia
+  if (!view) return null
+  if (view.agrees === false) {
+    return `essentia reads ${view.key ?? 'no key'}${view.bpm ? ` · ${view.bpm} BPM` : ''}`
+  }
+  return view.agrees ? 'essentia agrees' : null
 }
 
 function unmatchedMeta(sample: SessionSample): string {
@@ -154,6 +165,20 @@ export default function ProjectStep({
                 <span className="entry" title={sample.resolved_path}>
                   <span className="entry-name">{sample.name}</span>
                   <span className="entry-meta">{matchedMeta(sample)}</span>
+                  {sample.tags?.length ? (
+                    <span className="tags">
+                      {sample.tags.map((tag) => (
+                        <span className="tag" key={tag}>
+                          {tag}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                  {secondOpinion(sample) ? (
+                    <span className="entry-aside" data-clash={sample.essentia?.agrees === false || undefined}>
+                      {secondOpinion(sample)}
+                    </span>
+                  ) : null}
                 </span>
               </li>
             ))}

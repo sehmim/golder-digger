@@ -7,6 +7,8 @@ DISTANCE dial exists to avoid.
 """
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
 from . import config
@@ -172,6 +174,9 @@ def select(corpus: Corpus, ctx: dict, distance: float, k: int = config.DEFAULT_K
             "chunk_id": corpus.ids[i],
             "path": corpus.rows[i]["path"],
             "role": corpus.roles[i],
+            # provenance, so a UI can distinguish a human's filename from a guess
+            "role_source": corpus.rows[i]["role_source"],
+            "tags": [t["tag"] for t in json.loads(corpus.rows[i]["tags"] or "[]")][:3],
             "bpm": None if np.isnan(corpus.bpm[i]) else round(float(corpus.bpm[i]), 1),
             "tonic": (config.PITCH_NAMES[corpus.tonic[i]] if corpus.tonic[i] >= 0 else None),
             "is_major": bool(corpus.rows[i]["is_major"]),

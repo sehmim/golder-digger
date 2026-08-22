@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config, db, features, mock
+from . import config, db, essentia_runner, features, mock
 
 _clap = None
 
@@ -44,6 +44,8 @@ def walk_all(roots) -> list[Path]:
                 seen.add(str(path))
                 out.append(path)
     return out
+
+
 def _role_or_tags(role, role_source, tags) -> tuple[str | None, str]:
     """Filename first, tag classifier second.
 
@@ -57,8 +59,14 @@ def _role_or_tags(role, role_source, tags) -> tuple[str | None, str]:
     return (inferred, "clap") if inferred else (None, "unknown")
 
 
-def analyze_file(path: Path) -> list[dict]:
-    """One file -> chunk rows. Honours config.MOCK."""
+def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
+    """One file -> chunk rows. Honours config.MOCK.
+
+    `essentia` is that file's MusicExtractor record when the pass ran. It is
+    only consulted in mock mode, where a real measurement of key and tempo beats
+    a number synthesized from the file hash. In real mode beat-this and librosa
+    stay authoritative and Essentia remains the second opinion it was built as.
+    """
     fh = features.file_hash(path)
     role, role_source = features.role_from_path(path)
 
@@ -69,6 +77,15 @@ def analyze_file(path: Path) -> list[dict]:
         except Exception:
             duration = 8.0
         rhythm = mock.rhythm(fh)
+        # a real tempo also re-cuts the chunks: the spans are bar-aligned
+        if essentia and essentia.get("bpm"):
+            rhythm = {**rhythm, "bpm": round(float(essentia["bpm"]), 2)}
+        # Essentia reporting 0 BPM means "no tempo here" -- a one-shot, not a
+        # loop. Storing the hash's invented tempo instead would feed a made-up
+        # number into the rhythm term; None reads as NEUTRAL there.
+        bpm = rhythm["bpm"] if not essentia else (
+            round(float(essentia["bpm"]), 2) if essentia.get("bpm") else None)
+        e_pc = essentia_runner.pitch_to_pc(essentia.get("key_key")) if essentia else None
         spans = features.chunk_boundaries(duration, rhythm)
         rows = []
         for i, (t0, t1) in enumerate(spans):
@@ -76,11 +93,19 @@ def analyze_file(path: Path) -> list[dict]:
             ch = mock.chroma(cid)
             tonal, tconf = mock.confidences(cid)
             pc, maj, conf = features.estimate_key(ch, gate=tonal)
+            if e_pc is not None:
+                pc = e_pc
+                maj = (essentia.get("key_scale") or "").lower() == "major"
+                # same gate both tools answer through, so the two stay comparable
+                conf = essentia_runner.gated_confidence(
+                    essentia.get("key_strength_raw"), tonal) or conf
+            if essentia and essentia.get("bpm_confidence") is not None:
+                tconf = float(essentia["bpm_confidence"])
             tags = features.tags_from_sims(mock.tag_sims(cid))
             r, src = _role_or_tags(role, role_source, tags)
             rows.append(dict(
                 chunk_id=cid, path=str(path), file_hash=fh, chunk_index=i,
-                t_start=t0, t_end=t1, bpm=rhythm["bpm"],
+                t_start=t0, t_end=t1, bpm=bpm,
                 beats_per_bar=rhythm["beats_per_bar"],
                 tonic_pc=pc, is_major=maj, key_confidence=conf,
                 role=r, role_source=src, tonalness=tonal, tempo_confidence=tconf,
@@ -166,23 +191,52 @@ def run_job(conn, job_id: str, roots):
                  (len(paths), now, job_id))
     conn.commit()
 
-    seen = {r["file_hash"] for r in conn.execute("SELECT file_hash FROM files WHERE status='ok'")}
+    # Native only: a container per file would cost more than the analysis, so a
+    # Docker-only machine gets one folder-wide pass after the loop instead.
+    inline_essentia = (config.ESSENTIA_ON_INGEST
+                       and essentia_runner.essentia_available_natively())
+
+    # "Already done" means done to the current standard. A file ingested before
+    # Essentia was part of ingest still has hash-derived key and tempo, so it is
+    # not skipped -- otherwise the dedupe would permanently freeze a stale corpus.
+    if inline_essentia:
+        seen = {r["file_hash"] for r in conn.execute(
+            "SELECT f.file_hash FROM files f JOIN essentia e ON e.file_hash = f.file_hash"
+            " WHERE f.status='ok'")}
+    else:
+        seen = {r["file_hash"] for r in conn.execute(
+            "SELECT file_hash FROM files WHERE status='ok'")}
     done = failed = 0
     for path in paths:
         conn.execute("UPDATE jobs SET message=? WHERE job_id=?", (str(path), job_id))
         conn.commit()
         try:
             fh = features.file_hash(path)
-            if fh in seen:                      # content-hash dedupe
-                done += 1
-                continue
-            rows = analyze_file(path)
-            upsert(conn, rows)
-            conn.execute(
-                "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?)",
-                (fh, str(path), rows[-1]["t_end"], "ok", None,
-                 dt.datetime.now(dt.UTC).isoformat()))
-            seen.add(fh)
+            # A skip still falls through to the progress write below: `continue`
+            # here froze the bar at zero for any folder already ingested.
+            if fh not in seen:                  # content-hash dedupe
+                essentia = None
+                if inline_essentia:
+                    try:
+                        essentia = essentia_runner.extract_one(path)
+                    except Exception:
+                        # a file essentia cannot read is not a failed ingest
+                        essentia = None
+                rows = analyze_file(path, essentia)
+                upsert(conn, rows)
+                if essentia:
+                    # after upsert: the gate and the agreement flag read off the
+                    # chunks. In mock mode the key in those chunks came from this
+                    # same record, so there is nothing to agree with.
+                    seeded = config.MOCK and essentia_runner.pitch_to_pc(
+                        essentia.get("key_key")) is not None
+                    essentia_runner.merge_one(conn, fh, path, essentia, commit=False,
+                                              compare=not seeded)
+                conn.execute(
+                    "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?)",
+                    (fh, str(path), rows[-1]["t_end"], "ok", None,
+                     dt.datetime.now(dt.UTC).isoformat()))
+                seen.add(fh)
             done += 1
         except Exception as exc:
             failed += 1
@@ -192,6 +246,18 @@ def run_job(conn, job_id: str, roots):
                           dt.datetime.now(dt.UTC).isoformat()))
         conn.execute("UPDATE jobs SET done=?, failed=? WHERE job_id=?", (done, failed, job_id))
         conn.commit()
+
+    if config.ESSENTIA_ON_INGEST and not inline_essentia and essentia_runner.runner_mode():
+        conn.execute("UPDATE jobs SET message='essentia (docker)' WHERE job_id=?", (job_id,))
+        conn.commit()
+        for root in (roots if isinstance(roots, (list, tuple)) else [roots]):
+            if not Path(root).expanduser().is_dir():
+                continue        # the container pass takes a directory, not a file
+            try:
+                out = essentia_runner.run(root, config.ROOT / "essentia.json")
+                essentia_runner.merge(conn, essentia_runner.load(out), root)
+            except Exception:
+                pass            # recorded by the standalone pass; never fails an ingest
 
     conn.execute(
         "UPDATE jobs SET state='finished', message=NULL, finished_at=? WHERE job_id=?",

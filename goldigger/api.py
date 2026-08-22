@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
-from . import ableton, audition, config, db, ingest, scoring
+from . import ableton, audition, config, db, essentia_runner, ingest, scoring
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -18,10 +18,15 @@ state: dict = {"conn": None, "corpus": None}
 
 @app.on_event("startup")
 def _startup():
-    conn = db.connect()
+    conn = db.thread_conn()
     db.init(conn)
-    state["conn"] = conn
     state["corpus"] = ingest.load_corpus(conn)
+
+
+def _conn():
+    """This thread's connection. FastAPI runs sync handlers on a threadpool and
+    ingest runs on another thread again -- see db.thread_conn."""
+    return db.thread_conn()
 
 
 def _corpus():
@@ -62,25 +67,36 @@ class AlsReq(BaseModel):
     path: str = Field(..., description="a .als on disk")
 
 
+class EssentiaReq(BaseModel):
+    root: str = Field(..., description="the folder that was ingested")
+
+
 # ---------------------------------------------------------------- routes
 
 @app.get("/health")
 def health():
     c = state["corpus"]
     return {"ok": True, "mock": config.MOCK, "chunks": len(c) if c else 0,
-            "db": str(config.DB_PATH)}
+            "db": str(config.DB_PATH),
+            # how ingest will characterise files, before anything is ingested
+            "essentia": essentia_runner.runner_mode() if config.ESSENTIA_ON_INGEST else None}
 
 
 @app.post("/ingest")
 async def start_ingest(req: IngestReq):
-    conn = state["conn"]
+    conn = _conn()
     targets = req.targets()
     job_id = ingest.new_job(conn, targets)
 
+    def _work():
+        # its own connection: this runs on a worker thread -- see db.thread_conn
+        worker = db.thread_conn()
+        ingest.run_job(worker, job_id, targets)
+        return ingest.load_corpus(worker)
+
     async def _run():
         # extraction is CPU/GPU bound and releases the GIL, so a thread is enough
-        await asyncio.to_thread(ingest.run_job, conn, job_id, targets)
-        state["corpus"] = ingest.load_corpus(conn)
+        state["corpus"] = await asyncio.to_thread(_work)
 
     asyncio.create_task(_run())
     return {"job_id": job_id}
@@ -88,10 +104,50 @@ async def start_ingest(req: IngestReq):
 
 @app.get("/ingest/status/{job_id}")
 def ingest_status(job_id: str):
-    row = state["conn"].execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+    row = _conn().execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
     if not row:
         raise HTTPException(404, "no such job")
     return dict(row)
+
+
+@app.post("/essentia")
+async def start_essentia(req: EssentiaReq):
+    """Second-opinion pass over an already-ingested folder.
+
+    A job like any other, so the desktop app can watch it on the same poller --
+    but a single subprocess over the whole folder, so it reports phases rather
+    than a file count.
+    """
+    conn = _conn()
+    if essentia_runner.runner_mode() is None:
+        raise HTTPException(
+            503, "essentia is not installed and docker is not available here")
+    job_id = ingest.new_job(conn, req.root)
+
+    def _work():
+        essentia_runner.run_job(db.thread_conn(), job_id, req.root)
+
+    async def _run():
+        await asyncio.to_thread(_work)
+
+    asyncio.create_task(_run())
+    return {"job_id": job_id}
+
+
+@app.get("/essentia/summary")
+def essentia_summary():
+    """Coverage and agreement, for a UI that has to say whether it is worth running."""
+    conn = _conn()
+    counts = {r["a"]: r["c"] for r in conn.execute(
+        "SELECT key_agreement a, COUNT(*) c FROM essentia GROUP BY a")}
+    return {
+        "mode": essentia_runner.runner_mode(),
+        "files": conn.execute("SELECT COUNT(DISTINCT file_hash) FROM chunks").fetchone()[0],
+        "covered": conn.execute("SELECT COUNT(*) FROM essentia").fetchone()[0],
+        "agree": counts.get(1, 0),
+        "disagree": counts.get(0, 0),
+        "no_key": counts.get(None, 0),
+    }
 
 
 @app.get("/library")
@@ -106,14 +162,14 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
         args.append(role)
     sql += " ORDER BY path, chunk_index LIMIT ? OFFSET ?"
     args += [limit, offset]
-    rows = [dict(r) for r in state["conn"].execute(sql, args)]
+    rows = [dict(r) for r in _conn().execute(sql, args)]
     for r in rows:
         r["tonic"] = (config.PITCH_NAMES[r["tonic_pc"]]
                       if r["tonic_pc"] is not None and r["tonic_pc"] >= 0 else None)
         # stored as JSON text; hand the client objects, not strings
         for k in ("spectral", "tags"):
             r[k] = json.loads(r[k]) if r[k] else None
-    total = state["conn"].execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+    total = _conn().execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
     return {"total": total, "count": len(rows), "chunks": rows}
 
 
@@ -139,22 +195,64 @@ def _session_key(als: dict) -> str | None:
     return f"{config.PITCH_NAMES[root % 12]} {mode}"
 
 
+def _top_tags(rows, limit: int = 3) -> list[str]:
+    """The file's tags, summed over its chunks.
+
+    Summed rather than taken from the loudest chunk: a loop whose tags split
+    between "kick" and "hi-hat" is still a drum loop, and either name alone
+    would misdescribe it.
+    """
+    totals: dict[str, float] = {}
+    for row in rows:
+        for tag in json.loads(row["tags"]) if row["tags"] else []:
+            totals[tag["tag"]] = totals.get(tag["tag"], 0.0) + tag["confidence"]
+    return [name for name, _ in sorted(totals.items(), key=lambda kv: -kv[1])[:limit]]
+
+
+def _essentia_view(conn, file_hashes: set[str]) -> dict | None:
+    """Essentia's answer for this sample, or None if the pass never saw it."""
+    hashes = [h for h in file_hashes if h]
+    if not hashes:
+        return None
+    marks = ",".join("?" * len(hashes))
+    row = conn.execute(
+        f"SELECT key_key, key_scale, key_confidence, bpm, bpm_confidence,"
+        f" danceability, key_agreement FROM essentia WHERE file_hash IN ({marks})",
+        hashes).fetchone()
+    if not row:
+        return None
+    return {
+        "key": f"{row['key_key']} {row['key_scale']}" if row["key_key"] else None,
+        "key_confidence": row["key_confidence"],
+        "bpm": round(row["bpm"], 1) if row["bpm"] is not None else None,
+        "bpm_confidence": row["bpm_confidence"],
+        "danceability": row["danceability"],
+        # None means neither tool named a key, which is not the same as a clash
+        "agrees": None if row["key_agreement"] is None else bool(row["key_agreement"]),
+    }
+
+
 def _chunk_digest(conn, chunk_ids: list[str]) -> dict:
     """What the UI shows for one resolved sample: its role, tempo and key."""
     if not chunk_ids:
-        return {"chunks": 0, "role": None, "bpm": None, "tonic": None}
+        return {"chunks": 0, "role": None, "bpm": None, "tonic": None,
+                "role_source": None, "tags": [], "essentia": None}
     marks = ",".join("?" * len(chunk_ids))
     rows = conn.execute(
-        f"SELECT bpm, tonic_pc, role FROM chunks WHERE chunk_id IN ({marks})",
-        chunk_ids).fetchall()
+        f"SELECT bpm, tonic_pc, role, role_source, file_hash, tags FROM chunks"
+        f" WHERE chunk_id IN ({marks})", chunk_ids).fetchall()
     roles = [r["role"] for r in rows if r["role"]]
+    sources = [r["role_source"] for r in rows if r["role_source"]]
     bpms = [r["bpm"] for r in rows if r["bpm"] is not None]
     tonics = [r["tonic_pc"] for r in rows if r["tonic_pc"] is not None and r["tonic_pc"] >= 0]
     return {
         "chunks": len(rows),
         "role": max(set(roles), key=roles.count) if roles else None,
+        "role_source": max(set(sources), key=sources.count) if sources else None,
         "bpm": round(sum(bpms) / len(bpms), 1) if bpms else None,
         "tonic": config.PITCH_NAMES[max(set(tonics), key=tonics.count)] if tonics else None,
+        "tags": _top_tags(rows),
+        "essentia": _essentia_view(conn, {r["file_hash"] for r in rows}),
     }
 
 
@@ -165,7 +263,7 @@ def session_als(req: AlsReq):
     `unmatched` entries carry `ingest_path` when the file is on disk but absent
     from the corpus -- those are exactly the roots to feed back into POST /ingest.
     """
-    conn = state["conn"]
+    conn = _conn()
     if not os.path.isfile(req.path):
         raise HTTPException(404, f"no such file: {req.path}")
     try:
@@ -201,18 +299,18 @@ def session_als(req: AlsReq):
 def tag(chunk_id: str, req: TagReq):
     if req.role not in config.ROLES:
         raise HTTPException(400, f"role must be one of {config.ROLES}")
-    cur = state["conn"].execute(
+    cur = _conn().execute(
         "UPDATE chunks SET role=?, role_source='manual' WHERE chunk_id=?",
         (req.role, chunk_id))
-    state["conn"].commit()
+    _conn().commit()
     if not cur.rowcount:
         raise HTTPException(404, "no such chunk")
-    state["corpus"] = ingest.load_corpus(state["conn"])
+    state["corpus"] = ingest.load_corpus(_conn())
     return {"chunk_id": chunk_id, "role": req.role, "role_source": "manual"}
 
 
 def _chunk_row(chunk_id: str):
-    row = state["conn"].execute(
+    row = _conn().execute(
         "SELECT path, t_start, t_end, bpm FROM chunks WHERE chunk_id=?",
         (chunk_id,)).fetchone()
     if not row:

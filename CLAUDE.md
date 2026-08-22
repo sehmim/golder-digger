@@ -59,8 +59,15 @@ There is no linter or formatter configured in either half.
 
 `GOLDDIGGER_MOCK=1` is the default in `config.py`. Feature extraction is synthesized
 deterministically from the file hash — same shapes and ranges as the real thing, no
-beat-this or CLAP, no model downloads, ~150 files/second. The rest of the pipeline
-(chunking, storage, scoring, API, desktop) is real and runs end to end.
+beat-this or CLAP, no model downloads. The rest of the pipeline (chunking, storage,
+scoring, API, desktop) is real and runs end to end.
+
+**Ingest runs Essentia in-process when it can import it** (`ESSENTIA_ON_INGEST`, on by
+default). That makes key and tempo real measurements even in mock mode — Essentia's
+answer overrides the hash-derived one, and 0 BPM is stored as `NULL` because it means
+"one-shot", not "no tempo". Chroma and the CLAP vector stay synthetic, so **Fit's
+harmony term and Novelty are still fiction under mock**. It also costs about a second
+per file: `GOLDDIGGER_ESSENTIA=0` restores the ~150 files/second mock speed.
 
 Build and test against mock. Set `GOLDDIGGER_MOCK=0` only when deliberately exercising
 the real extractors — the first call loads torch and takes minutes.
@@ -118,7 +125,9 @@ The existing code is written a particular way, and new code should match it:
   `app.getPath('userData')`, and the spawn in `src/main/api.ts` assumes the repo
   checkout is the app's parent directory.
 - `src/main/api.ts` **reuses an already-listening server on :8420** rather than
-  spawning a second one. A stale `golddigger serve` from an earlier session will be
-  adopted silently and will 404 any route added since it started.
+  spawning a second one. A stale `golddigger serve` from an earlier session used to be
+  adopted silently and 404 every route added since it started; `start()` now checks
+  `/health` for the `essentia` field and refuses to adopt a server without it. Move that
+  marker whenever the health payload gains a field that pins a newer build.
 - Drag-and-drop of a `.als` opens the file picker instead of reading the drop. The
   browser hands over a filename, not a path, and `ableton.resolve()` needs a real one.

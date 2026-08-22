@@ -17,6 +17,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
+# Ingest runs the extractor when it can import this. No Windows build exists --
+# that platform gets the Docker path in essentia_runner.py instead.
+essentia = ["essentia; sys_platform != 'win32'"]
 
 [project.scripts]
 golddigger = "goldigger.cli:main"

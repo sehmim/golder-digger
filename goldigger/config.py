@@ -107,3 +107,9 @@ TONALNESS_GAIN = 4.0        # tonalness is small even for clear keys; rescale
 # features from the file hash. Lets the whole pipeline + API run with no models.
 import os
 MOCK = os.getenv("GOLDDIGGER_MOCK", "1") == "1"
+
+# --- essentia ---
+# Run the second-opinion extractor as part of ingest rather than as a separate
+# pass. On by default: it needs no models, and in mock mode it is the only real
+# measurement of key and tempo the pipeline has. GOLDDIGGER_ESSENTIA=0 skips it.
+ESSENTIA_ON_INGEST = os.getenv("GOLDDIGGER_ESSENTIA", "1") == "1"
