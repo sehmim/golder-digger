@@ -6,3 +6,11 @@ __pycache__/
 *.db-shm
 .pytest_cache/
 *.egg-info/
+
+# local soundbank used for ingest/analysis testing — everyone points this at their own sounds;
+# folder itself is tracked (empty) so it exists after clone, contents are not
+soundbank/*
+!soundbank/.gitkeep
+
+# raw Essentia extractor output; the useful parts are merged into the database
+essentia.json
