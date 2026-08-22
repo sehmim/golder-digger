@@ -1,0 +1,24 @@
+[project]
+name = "golddigger"
+version = "0.1.0"
+description = "Sample discovery by compatibility and controllable non-obviousness"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi", "uvicorn", "pydantic",
+  "numpy", "librosa", "soundfile",
+  "torch", "torchaudio", "transformers",
+  "beat-this",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+golddigger = "goldigger.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["goldigger*"]
