@@ -178,15 +178,15 @@ a{color:var(--brass)}
   <span>branch <b>Dev</b></span>
   <span>42 tests passing</span>
   <span>corpus: Roland Samples</span>
-  <span>features: real (beat-this + LAION-CLAP, MPS)</span>
+  <span>features: real, full corpus</span>
 </div>
 
 <section>
   <h2>Where it stands</h2>
   <p class="sub">Measured on this machine, not estimated.</p>
   <div class="tiles">
-    <div class="tile"><b>2,122</b><span>chunks indexed from 2,043 files</span></div>
-    <div class="tile"><b>202</b><span>files through the real extractors, 0 failed, in 73s</span></div>
+    <div class="tile"><b>2,181</b><span>chunks, all with real features</span></div>
+    <div class="tile"><b>2,041</b><span>files through the real extractors, 2 failed, in ~13 min</span></div>
     <div class="tile"><b>437</b><span>Live sets parsed, from 752 found</span></div>
     <div class="tile"><b>30,912</b><span>sample references across 364 sets</span></div>
     <div class="tile"><b>1,018</b><span>files self-labelled with a tempo in the filename</span></div>
@@ -230,7 +230,7 @@ a{color:var(--brass)}
     <div class="row">
       <div class="was"><strong>Key, mode, BPM</strong><em>match parts on musical metadata</em></div>
       <div class="now">Built as <b>soft evidence</b>, never a hard filter. An unconfident key estimate falls back to neutral instead of excluding a candidate, and tempo is ratio-aware so 87 against 174 is a match.
-        <span class="ev">real key estimates now beat chance 4.6× — see the results below</span></div>
+        <span class="ev">real key estimates beat chance 5.5×, tempo 16× — see below</span></div>
       <div><span class="chip c-built">Built</span></div>
     </div>
 
@@ -244,14 +244,14 @@ a{color:var(--brass)}
     <div class="row">
       <div class="was"><strong>Modes</strong><em>Ionian, Super Locrian…</em></div>
       <div class="now">Major and minor only. The seven-mode detection in the brief’s output table isn’t implemented, and the key estimator isn’t accurate enough yet to carry that resolution.
-        <span class="ev">pitch class + mode currently lands 21.0%</span></div>
+        <span class="ev">pitch class + mode lands 13.3%, the weakest measured figure</span></div>
       <div><span class="chip c-none">Not built</span></div>
     </div>
 
     <div class="row">
       <div class="was"><strong>Tension · Instrument · Layer? · New Part</strong><em>columns in the output table</em></div>
       <div class="now">None implemented. Role (drums / bass / melody / harmony / texture / vocal / fx) is assigned by filename keyword, not by a classifier — which is a known weak point, not a finished feature.
-        <span class="ev">on a drum-heavy library, keyword matching put 73% of files in one role</span></div>
+        <span class="ev">filename matching leaves 428 of 2,181 chunks (20%) with no role at all</span></div>
       <div><span class="chip c-none">Not built</span></div>
     </div>
 
@@ -289,38 +289,36 @@ a{color:var(--brass)}
     <table>
       <thead><tr><th>Measure</th><th class="num">Chance</th><th class="num">Mock control</th><th class="num">Real extractors</th></tr></thead>
       <tbody>
-        <tr><td>Tempo, exact (±2%)</td><td class="num flat">3%</td><td class="num flat">6.7%</td><td class="num win">23.1%</td></tr>
-        <tr><td>Tempo, ratio-aware</td><td class="num flat">12%</td><td class="num flat">16.4%</td><td class="num win">40.4%</td></tr>
-        <tr><td>Key, pitch class</td><td class="num flat">8.3%</td><td class="num flat">9.3%</td><td class="num win">38.3%</td></tr>
-        <tr><td>Key, pitch class + mode</td><td class="num flat">4.2%</td><td class="num flat">1.6%</td><td class="num win">21.0%</td></tr>
-        <tr><td>Confidence separation</td><td class="num flat">0</td><td class="num flat">−0.0037</td><td class="num win">+0.0654</td></tr>
+        <tr><td>Tempo, exact (±2%)</td><td class="num flat">3%</td><td class="num flat">6.7%</td><td class="num win">48.5%</td></tr>
+        <tr><td>Tempo, ratio-aware</td><td class="num flat">12%</td><td class="num flat">16.4%</td><td class="num win">58.8%</td></tr>
+        <tr><td>Key, pitch class</td><td class="num flat">8.3%</td><td class="num flat">9.3%</td><td class="num win">45.3%</td></tr>
+        <tr><td>Key, pitch class + mode</td><td class="num flat">4.2%</td><td class="num flat">1.6%</td><td class="num win">13.3%</td></tr>
+        <tr><td>Confidence separation</td><td class="num flat">0</td><td class="num flat">−0.0037</td><td class="num win">+0.2102</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="sub" style="margin-top:16px">The last row is the one that matters most. <code>key_confidence</code> is supposed to be high when the key estimate is right and low when it isn’t. On mock features the separation is negative — the number is noise. On real features, correct estimates carry <b>0.155</b> confidence against <b>0.090</b> for wrong ones. The confidence is informative, which is what lets an unsure estimate fall back to neutral instead of poisoning the harmony score.</p>
+  <p class="sub" style="margin-top:16px">The last row is the one that matters most. <code>key_confidence</code> is supposed to be high when the key estimate is right and low when it isn’t. On mock features the separation is negative — the number is noise. On real features, correct estimates carry <b>0.277</b> confidence against <b>0.067</b> for wrong ones — a fourfold ratio. The confidence is informative, which is what lets an unsure estimate fall back to neutral instead of poisoning the harmony score.</p>
 </section>
 
 <section>
   <h2>The dial does what it claims</h2>
   <figure>
-    <svg class="chart" viewBox="0 0 720 250" role="img" aria-label="Novelty rises linearly with the DISTANCE setting from 0.107 at 10 to 0.902 at 90, while fit stays flat near 0.6, well above the 0.45 floor.">
+    <svg class="chart" viewBox="0 0 720 250" role="img" aria-label="Novelty rises with the DISTANCE setting from 0.096 at 10 to 0.899 at 90, while fit rises gently from 0.567 to 0.712, staying above the 0.45 floor throughout.">
       <line x1="60" y1="200" x2="700" y2="200" stroke="var(--rule-2)" stroke-width="1"/>
       <line x1="60" y1="20"  x2="60"  y2="200" stroke="var(--rule-2)" stroke-width="1"/>
       <line x1="60" y1="119" x2="700" y2="119" stroke="var(--rust)" stroke-width="1" stroke-dasharray="4 4" opacity=".65"/>
       <text x="666" y="113" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--rust)">fit floor 0.45</text>
 
-      <polyline points="120,180.7 265,145.8 410,109.8 555,73.5 680,37.6"
+      <polyline points="120,182.7 265,145.1 410,110.0 555,74.0 680,38.2"
                 fill="none" stroke="var(--brass)" stroke-width="2.5"/>
-      <polyline points="120,83.4 265,86.7 410,87.4 555,94.2 680,90.9"
+      <polyline points="120,97.9 265,88.9 410,81.2 555,78.0 680,71.8"
                 fill="none" stroke="var(--verd)" stroke-width="2.5"/>
 
       <g fill="var(--brass)">
-        <circle cx="120" cy="180.7" r="4"/><circle cx="265" cy="145.8" r="4"/><circle cx="410" cy="109.8" r="4"/>
-        <circle cx="555" cy="73.5" r="4"/><circle cx="680" cy="37.6" r="4"/>
+        <circle cx="120" cy="182.7" r="4"/><circle cx="265" cy="145.1" r="4"/><circle cx="410" cy="110.0" r="4"/><circle cx="555" cy="74.0" r="4"/><circle cx="680" cy="38.2" r="4"/>
       </g>
       <g fill="var(--verd)">
-        <circle cx="120" cy="83.4" r="4"/><circle cx="265" cy="86.7" r="4"/><circle cx="410" cy="87.4" r="4"/>
-        <circle cx="555" cy="94.2" r="4"/><circle cx="680" cy="90.9" r="4"/>
+        <circle cx="120" cy="97.9" r="4"/><circle cx="265" cy="88.9" r="4"/><circle cx="410" cy="81.2" r="4"/><circle cx="555" cy="78.0" r="4"/><circle cx="680" cy="71.8" r="4"/>
       </g>
 
       <g font-family="JetBrains Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="middle">
@@ -334,7 +332,7 @@ a{color:var(--brass)}
       <text x="130" y="32" font-family="Bricolage Grotesque, sans-serif" font-size="12.5" font-weight="700" fill="var(--brass)">novelty achieved</text>
       <text x="130" y="79" font-family="Bricolage Grotesque, sans-serif" font-size="12.5" font-weight="700" fill="var(--verd)">fit</text>
     </svg>
-    <figcaption>Ask for the 70th percentile of non-obviousness and you get 0.697. Novelty tracks the request across the whole range while fit stays near 0.6 — the floor-relaxation path never fired, and the lowest single result was 0.526. This is the acceptance property, reproduced on real files rather than fixtures.</figcaption>
+    <figcaption>Real features, full corpus. Ask for the 70th percentile of non-obviousness and you get 0.700. Fit does not fall as novelty rises — it drifts up, from 0.567 to 0.712 — and the lowest single result was 0.465 against a 0.45 floor. Context is a pad in F# minor that the key estimator called with 0.795 confidence; the harmony term ranged 0.490–0.604 across the sweep, where on mock features it sat pinned at neutral for every candidate.</figcaption>
   </figure>
 </section>
 
@@ -352,8 +350,8 @@ a{color:var(--brass)}
   <div class="gaps">
     <div class="gap"><h4>Baselines <span class="must">decides everything</span></h4><p>Random, metadata-only, nearest-neighbour, and inverse-similarity — plus the same novelty bands with Fit switched off, to see whether the compatibility layer earns its complexity.</p></div>
     <div class="gap"><h4>Tempo-synced audition <span class="must">MUST ×3</span></h4><p>Time-align the candidate to the session tempo before playback. Without it nobody can judge a suggestion, so no constant can be tuned.</p></div>
-    <div class="gap"><h4>Finish the real ingest</h4><p>202 of 2,043 files have been through the real extractors, at roughly 0.36s per file. The rest is about 12 minutes of compute.</p></div>
-    <div class="gap"><h4>Role tagging</h4><p>Filename keywords put 73% of a drum library into one bucket. The sample folders are already organised by role — that structure is better evidence than the filenames.</p></div>
+    <div class="gap"><h4>Mode detection</h4><p>Major/minor lands at 13.3%, barely above the 4.2% chance line and the weakest number here. Pitch class is fine; quality is not.</p></div>
+    <div class="gap"><h4>Role tagging</h4><p>A fifth of the corpus has no role, and mock mode hid that by inventing one. The sample folders are already organised by role — better evidence than filenames.</p></div>
   </div>
 </section>
 

@@ -1,0 +1,31 @@
+rank,chunk_id,path,role,bpm,tonic,is_major,key_confidence,fit,novelty,H,R,P,distance,fit_floor
+1,3d2470c2b44c:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/16Bit Samples/VE/Loops/VE_Loop3_75_Bbm.wav,,75.0,G#,1,0.005,0.712,0.1,0.599,1.0,0.6,10.0,0.45
+2,b006bc35e0c9:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Dark Techno/16Bit Samples/Bass/DKT1_02_126bpm_ Bass_A.wav,bass,157.9,E,0,0.002,0.56,0.101,0.6,0.291,1.0,10.0,0.45
+3,32c398337474:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/24Bit Samples/MG/Bass 3/MG_Bass3_02_E0.wav,bass,,E,1,0.836,0.597,0.089,0.353,0.6,1.0,10.0,0.45
+4,0dc7d24bf317:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV2_1.0.1 2/24Bit Samples/Organ/One Shots/m7/Organ_Chord3_Bbm7.wav,harmony,75.0,A#,0,0.027,0.53,0.114,0.592,1.0,0.25,10.0,0.45
+5,eac7badc1dd0:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/24Bit Samples/VE/One Shots/FX/VE_FX2.wav,fx,,G,1,0.74,0.533,0.085,0.251,0.6,1.0,10.0,0.45
+6,2fe9d84bb2bc:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Synth Pop/24Bit/Loops/Synth/Synth_Breathe_100_Cmaj.wav,harmony,111.1,E,0,0.27,0.467,0.087,0.547,0.742,0.25,10.0,0.45
+1,56e77945d3f0:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV2_1.0.1 2/24Bit Samples/Clav/One Shots/Runs/Clav_Run4_F#.wav,,,D#,0,0.016,0.601,0.301,0.6,0.6,0.6,30.0,0.45
+2,dfdace8b00ac:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Synth Pop/24Bit/One-shots/Toms/Low/Low 4.wav,,,G,0,0.122,0.59,0.301,0.568,0.6,0.6,30.0,0.45
+3,29cb3f09c5b7:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/24Bit Samples/OB/FX/OB_Riser1.wav,fx,,G,1,0.0,0.712,0.296,0.6,0.6,1.0,30.0,0.45
+4,67b67d9771df:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV2_1.0.1 2/24Bit Samples/EP1/Loops/EP1_Loop09_75_Gm.wav,,75.0,G,1,0.417,0.624,0.316,0.402,1.0,0.6,30.0,0.45
+5,c98988e42091:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV2_1.0.1 2/16Bit Samples/Clav/Loops/Clav_Loop1_69_C.wav,,71.4,C,1,0.138,0.465,0.305,0.539,0.309,0.6,30.0,0.45
+6,7795f4a906e9:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/16Bit Samples/OB/FX/OB_Rev4.wav,fx,,D,1,0.006,0.712,0.309,0.599,0.6,1.0,30.0,0.45
+1,3f2c356936ae:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Synth Pop/24Bit/One-shots/Cymbals/Ride/Ride 4.wav,drums,,B,1,0.013,0.712,0.5,0.6,0.6,1.0,50.0,0.45
+2,f6eaf97853ec:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV2_1.0.1 2/24Bit Samples/Clav/One Shots/Trills/Clav_Trill1_Gm.wav,,,G,1,0.028,0.598,0.503,0.592,0.6,0.6,50.0,0.45
+3,24e41e7c7c06:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/24Bit Samples/OB/Bass 2/OB_Bass2_06_D2.wav,bass,,D,1,0.881,0.533,0.506,0.25,0.6,1.0,50.0,0.45
+4,2a4e2a073c20:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/16Bit Samples/OB/Drums/OB_BD2.wav,drums,,D,0,0.002,0.712,0.497,0.6,0.6,1.0,50.0,0.45
+5,71fa62c25a6a:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/16Bit Files/BASS LOOPS/03 BASS Fm 125bpm.wav,bass,,F,1,0.169,0.691,0.498,0.546,0.6,1.0,50.0,0.45
+6,ebf534ffa9ee:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/16Bit Files/ONE SHOTS/KICKS SNARES CLAPS/CLAPS/04 CLAP.wav,drums,,C,1,0.001,0.712,0.498,0.6,0.6,1.0,50.0,0.45
+1,4f047998acce:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Dark Techno/16Bit Samples/Drum Hits/Snare/DKT1_Snare_ 08.wav,drums,,C#,0,0.01,0.713,0.7,0.6,0.6,1.0,70.0,0.45
+2,911d1d8fef3b:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV1_1.0.1 2/16Bit Samples/OB/Bass 1/OB_Bass1_01_B-1.wav,bass,,B,1,0.292,0.725,0.698,0.632,0.6,1.0,70.0,0.45
+3,1d64b2326c14:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/24Bit Files/ONE SHOTS/CYMBALS/CRASHES/02 CRASH.wav,drums,,B,1,0.009,0.713,0.702,0.6,0.6,1.0,70.0,0.45
+4,989bfb3caeae:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/24Bit Files/DRUM LOOPS/17 DRUMS 125bpm D.wav,drums,,E,1,0.002,0.712,0.704,0.6,0.6,1.0,70.0,0.45
+5,6040f722d881:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Synth Pop/16Bit/One-shots/Snares/Snare 7.wav,drums,,G#,0,0.012,0.712,0.699,0.599,0.6,1.0,70.0,0.45
+6,1420df1fd7c5:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/BMSP_SourceV2_1.0.1 2/24Bit Samples/EP1/One Shots/ArpegEchoes/EP1_ArpegEchoe1_E.wav,melody,105.3,D,1,0.031,0.494,0.696,0.592,0.202,1.0,70.0,0.45
+1,afca349c94d4:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/16Bit Files/ONE SHOTS/KICKS SNARES CLAPS/SNARES/11 SNARE.wav,drums,,E,0,0.02,0.712,0.9,0.598,0.6,1.0,90.0,0.45
+2,fea2d2906858:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/16Bit Files/ONE SHOTS/KICKS SNARES CLAPS/KICKS/08 KICK.wav,drums,,F#,0,0.007,0.713,0.896,0.601,0.6,1.0,90.0,0.45
+3,7652541ba5f9:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Dark Techno/24Bit Samples/Drum Hits/Snare/DKT1_Snare_ 02.wav,drums,,C#,1,0.001,0.712,0.903,0.6,0.6,1.0,90.0,0.45
+4,a9db204a88b1:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/24Bit Files/ONE SHOTS/SFX/03 SFX.wav,fx,,F#,0,0.002,0.713,0.899,0.6,0.6,1.0,90.0,0.45
+5,38673e483078:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/RolandCloud_MelodicTechHouse_1.0.0/24Bit Files/ONE SHOTS/PERCUSSION/11 PERCUSSION.wav,drums,,C,0,0.0,0.712,0.894,0.6,0.6,1.0,90.0,0.45
+6,2009aca6e621:0,/Volumes/Mac-Storage/Samples/Keys & Synths/Roland Samples/Roland Cloud - Dark Techno/24Bit Samples/Drum Hits/Hat/DKT1_Hihat_ 08.wav,drums,,C#,0,0.008,0.713,0.902,0.6,0.6,1.0,90.0,0.45

@@ -102,3 +102,53 @@ below trustworthy.
 
 `what-changed.html` — the original brief line by line against what exists now,
 published at https://claude.ai/code/artifact/5d693ae2-5f09-4687-8aeb-636c66cedea6
+
+## Full real-mode ingest
+
+2,041 files through beat-this + LAION-CLAP on MPS in ~13 minutes; **2 failed**,
+both `.m4a` — `config.AUDIO_EXTS` advertises the extension but libsndfile
+cannot decode AAC, so `load_audio` raises. Mock mode hid this: `sf.info` fails
+the same way but the `except` defaults duration to 8.0, so the file entered the
+corpus with fabricated features.
+
+| Measure | chance | mock | real (2,041 files) |
+|---|---:|---:|---:|
+| Tempo, exact ±2% | 3% | 6.7% | **48.5%** |
+| Tempo, ratio-aware | 12% | 16.4% | **58.8%** |
+| Key, pitch class | 8.3% | 9.3% | **45.3%** |
+| Key, pitch class + mode | 4.2% | 1.6% | **13.3%** |
+| `key_confidence` separation | 0 | −0.0037 | **+0.2102** |
+
+Correct key estimates carry 0.277 confidence against 0.067 for wrong ones — a
+4× ratio. That is the property `H = c·raw + (1−c)·NEUTRAL` depends on, and it
+now holds.
+
+**The 202-file subset was not representative.** Tempo exact went 23.1% → 48.5%,
+key pitch class 38.3% → 45.3%, but pitch class + mode fell 21.0% → 13.3%. Mode
+detection is the weak half, and the small sample flattered it.
+
+**Role tagging is worse than the mock run suggested.** Mock filled unmatched
+files with `mock.role()`, which manufactured a balanced-looking distribution.
+Real tagging is filename-only, and leaves **428 of 2,181 chunks (20%) with no
+role at all**; texture drops from 69 to 4 and vocal from 54 to 2.
+
+### Sweep on real features
+
+`csv/roland-real-features-sweep.csv`, context `372e5978f706:0`
+(`DKT1_18_126bpm_ Pad_F#.wav`, key confidence 0.795).
+
+| DISTANCE | mean novelty | mean fit | mean H | min fit |
+|---:|---:|---:|---:|---:|
+| 10 | 0.096 | 0.567 | 0.490 | 0.467 |
+| 30 | 0.305 | 0.617 | 0.551 | 0.465 |
+| 50 | 0.500 | 0.660 | 0.531 | 0.533 |
+| 70 | 0.700 | 0.678 | 0.604 | 0.494 |
+| 90 | 0.899 | 0.712 | 0.600 | 0.712 |
+
+The harmony term finally moves. On mock features `H` sat pinned near the 0.6
+neutral for every candidate; with a confident context and real corpus
+confidences it ranges 0.490–0.604, meaning harmony is now contributing to the
+ranking instead of being a constant.
+
+Note the extractor is still plainly fallible: that context file is named
+`126bpm` and beat-this called it 75.0.
