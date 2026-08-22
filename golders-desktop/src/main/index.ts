@@ -1,4 +1,5 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import type { OpenDialogOptions } from 'electron'
 import { join } from 'node:path'
 
 function createWindow(): void {
@@ -29,6 +30,20 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle('directory:select', async () => {
+    const parentWindow = BrowserWindow.getFocusedWindow()
+    const options: OpenDialogOptions = {
+      title: 'Select your sample directories',
+      buttonLabel: 'Choose directories',
+      properties: ['openDirectory', 'createDirectory', 'multiSelections']
+    }
+    const result = parentWindow
+      ? await dialog.showOpenDialog(parentWindow, options)
+      : await dialog.showOpenDialog(options)
+
+    return result.canceled ? [] : result.filePaths
+  })
+
   createWindow()
 
   app.on('activate', () => {

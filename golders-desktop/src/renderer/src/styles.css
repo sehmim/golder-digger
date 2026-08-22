@@ -1,15 +1,207 @@
 :root {
-  font-family: system-ui, sans-serif;
+  color: #171714;
+  background: #f6f5f1;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
-  display: grid;
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+}
+
+.page {
+  display: grid;
+  min-height: 100vh;
+  padding: 48px 24px 24px;
   place-items: center;
+}
+
+.directory-picker {
+  display: flex;
+  width: min(100%, 500px);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.folder-icon {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 28px;
+  border: 1px solid #dedbd1;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgb(38 35 25 / 8%);
+  place-items: center;
+}
+
+.folder-icon svg {
+  width: 32px;
+  fill: none;
+  stroke: #a77b17;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: #96701b;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
+  font-size: clamp(30px, 5vw, 42px);
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.description {
+  max-width: 460px;
+  margin: 18px auto 30px;
+  color: #6e6b63;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.primary-button {
+  min-width: 170px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #1d1d19;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.primary-button:hover {
+  background: #33332d;
+}
+
+.primary-button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 3px solid rgb(167 123 23 / 25%);
+  outline-offset: 3px;
+}
+
+.hint {
+  margin: 14px 0 0;
+  color: #9a978f;
+  font-size: 12px;
+}
+
+.selections {
+  width: min(100%, 460px);
+  margin-top: 24px;
+  border: 1px solid #dedbd1;
+  border-radius: 11px;
+  background: #ffffff;
+  text-align: left;
+  overflow: hidden;
+}
+
+.selections-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 15px;
+  border-bottom: 1px solid #ece9e1;
+}
+
+.selections-header > span {
+  color: #8a867d;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.clear-button {
+  padding: 2px;
+  border: 0;
+  color: #8a6618;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.selections ul {
+  max-height: 224px;
+  margin: 0;
+  padding: 5px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.selections li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 7px;
+}
+
+.selections li:hover {
+  background: #f7f6f2;
+}
+
+.selections li svg {
+  width: 18px;
+  fill: none;
+  stroke: #a77b17;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.selections li > span {
+  overflow: hidden;
+  color: #33322e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: #969188;
+  background: transparent;
+  font: inherit;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  place-items: center;
+}
+
+.remove-button:hover {
+  color: #34322d;
+  background: #ebe8df;
 }
