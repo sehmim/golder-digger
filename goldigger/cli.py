@@ -4,7 +4,7 @@ import csv
 import json
 import sys
 
-from . import ableton, config, db, ingest, scoring
+from . import ableton, config, db, essentia_runner, ingest, scoring
 
 
 CSV_FIELDS = ["rank", "chunk_id", "path", "role", "bpm", "tonic", "is_major",
@@ -61,6 +61,12 @@ def main():
     p.add_argument("--no-session-context", action="store_true",
                    help="ignore Live's tempo and key; infer them from the corpus")
 
+    p = sub.add_parser(
+        "essentia",
+        help="second-opinion analysis: native on macOS/Linux, Docker on Windows")
+    p.add_argument("root", help="the same folder you ingested")
+    p.add_argument("--out", help="where the raw extractor JSON lands")
+
     sub.add_parser("serve", help="run the API")
     args = ap.parse_args()
 
@@ -112,6 +118,21 @@ def main():
                 write_csv(results, floor, args.distance)
             else:
                 print(json.dumps({"fit_floor": floor, "results": results}, indent=2))
+
+    elif args.cmd == "essentia":
+        out = args.out or (config.ROOT / "essentia.json")
+        essentia_runner.run(args.root, out)
+        records = essentia_runner.load(out)
+        merged = essentia_runner.merge(conn, records, args.root)
+        skipped = len(records) - merged
+        print(f"merged {merged} files"
+              + (f"  ({skipped} not in the corpus -- ingest them first)"
+                 if skipped else ""), file=sys.stderr)
+        agree = conn.execute(
+            "SELECT key_agreement a, COUNT(*) c FROM essentia GROUP BY a").fetchall()
+        for r in agree:
+            label = {1: "agree", 0: "disagree", None: "no key either side"}[r["a"]]
+            print(f"  librosa vs essentia key: {label:20s} {r['c']}", file=sys.stderr)
 
     elif args.cmd == "serve":
         import uvicorn
