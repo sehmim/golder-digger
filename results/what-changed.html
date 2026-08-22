@@ -189,7 +189,7 @@ a{color:var(--brass)}
     <div class="tile"><b>2,041</b><span>files through the real extractors, 2 failed, in ~13 min</span></div>
     <div class="tile"><b>437</b><span>Live sets parsed, from 752 found</span></div>
     <div class="tile"><b>30,912</b><span>sample references across 364 sets</span></div>
-    <div class="tile"><b>1,018</b><span>files self-labelled with a tempo in the filename</span></div>
+    <div class="tile"><b>26.6%</b><span>overlap with inverse similarity — the objection that didn’t hold</span></div>
   </div>
 </section>
 
@@ -337,10 +337,30 @@ a{color:var(--brass)}
 </section>
 
 <section>
+  <h2>Is this just inverse similarity</h2>
+  <p class="sub">The sharpest objection to the whole idea: that “compatible but non-obvious” is an elaborate way of sorting a similarity list backwards. 60 contexts × 5 dial positions × 6 strategies, 1,800 selections. Overlap is Jaccard against what Gold Digger returned for the same context and setting.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Strategy</th><th class="num">Fit</th><th class="num">Below floor</th><th class="num">Novelty</th><th class="num">Redundancy</th><th class="num">Same role</th><th class="num">Overlap</th></tr></thead>
+      <tbody>
+        <tr><td>Random</td><td class="num">0.546</td><td class="num">27.9%</td><td class="num">0.501</td><td class="num">0.325</td><td class="num">19.9%</td><td class="num flat">0.1%</td></tr>
+        <tr><td>Metadata only (max fit)</td><td class="num win">0.758</td><td class="num">0.0%</td><td class="num">0.440</td><td class="num">0.554</td><td class="num">0.0%</td><td class="num flat">0.4%</td></tr>
+        <tr><td>Nearest neighbour</td><td class="num" style="color:var(--rust)">0.413</td><td class="num" style="color:var(--rust)">62.1%</td><td class="num">0.002</td><td class="num" style="color:var(--rust)">0.891</td><td class="num" style="color:var(--rust)">96.3%</td><td class="num flat">0.0%</td></tr>
+        <tr><td>Inverse similarity</td><td class="num">0.545</td><td class="num">26.3%</td><td class="num">0.500</td><td class="num">0.418</td><td class="num">18.0%</td><td class="num"><b>26.6%</b></td></tr>
+        <tr><td>Novelty band, gate removed</td><td class="num">0.558</td><td class="num">24.8%</td><td class="num">0.500</td><td class="num">0.300</td><td class="num">17.6%</td><td class="num">60.1%</td></tr>
+        <tr><td><b>Gold Digger</b></td><td class="num win">0.644</td><td class="num win">0.0%</td><td class="num">0.500</td><td class="num">0.316</td><td class="num">5.7%</td><td class="num flat">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:18px"><b>The objection doesn’t hold.</b> Gold Digger and inverse similarity agree on only <b>26.6%</b> of what they return, steady across the whole dial. Three-quarters of the output is material that walking outward in embedding space never surfaces. And at identical achieved novelty the gate keeps fit at 0.644 against 0.545, with <b>nothing</b> below the floor where inverse similarity puts 26.3% below it. Removing only the gate — keeping the band and the diversity term — costs 0.086 of fit and changes about 40% of the selection, so the gate is doing work rather than decorating.</p>
+  <p class="sub"><b>The most useful result is a negative one.</b> Nearest-neighbour retrieval scores the <em>lowest</em> fit of any strategy, below random. It returns the context’s own role 96.3% of the time at 0.891 intra-set redundancy — eight near-identical items. A similarity search hands you another snare when what you wanted was something to sit next to the snare. That is the empirical case for keeping “sounds like” and “works with” apart.</p>
+</section>
+
+<section>
   <h2>What isn’t answered yet</h2>
   <div class="caveat">
-    <h3>No baselines exist, so nothing here proves the idea works</h3>
-    <p>Everything above shows the machinery behaves as specified. None of it shows the machinery is <strong>worth building</strong>. The missing comparison is a candidate chosen by progressively farther CLAP neighbours with no compatibility gate at all — “sort the similarity list backwards”. Until DISTANCE is measured against that, and against random and metadata-only selection, the honest status of the central claim is untested.</p>
+    <h3>The baselines are internal. Nobody has listened to a single result.</h3>
+    <p>Every number on this page is computed <strong>inside the scoring model</strong>. The baselines establish that the strategies are genuinely different and that the gate holds compatibility while the dial moves — they cannot establish that the results are more <em>inspiring</em>, because that is a judgement only a producer can make. A system can be measurably distinct and still creatively useless.</p>
     <p>The second missing piece is a listener. Fit and novelty are currently tuned by constants that were guesses — <code>FIT_FLOOR</code>, <code>BANDWIDTH</code>, <code>REDUNDANCY</code>. They can only be set by ear, and nobody has heard a result yet, because tempo-synced audition doesn’t exist.</p>
   </div>
 </section>
@@ -348,7 +368,7 @@ a{color:var(--brass)}
 <section>
   <h2>Next, in order</h2>
   <div class="gaps">
-    <div class="gap"><h4>Baselines <span class="must">decides everything</span></h4><p>Random, metadata-only, nearest-neighbour, and inverse-similarity — plus the same novelty bands with Fit switched off, to see whether the compatibility layer earns its complexity.</p></div>
+    <div class="gap"><h4>Listeners <span class="must">decides everything</span></h4><p>Rate obviousness, compatibility and inspiration across the five dial positions, blind and in random order. The one question the internal numbers cannot reach.</p></div>
     <div class="gap"><h4>Tempo-synced audition <span class="must">MUST ×3</span></h4><p>Time-align the candidate to the session tempo before playback. Without it nobody can judge a suggestion, so no constant can be tuned.</p></div>
     <div class="gap"><h4>Mode detection</h4><p>Major/minor lands at 13.3%, barely above the 4.2% chance line and the weakest number here. Pitch class is fine; quality is not.</p></div>
     <div class="gap"><h4>Role tagging</h4><p>A fifth of the corpus has no role, and mock mode hid that by inventing one. The sample folders are already organised by role — better evidence than filenames.</p></div>
