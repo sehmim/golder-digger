@@ -2774,3 +2774,124 @@ button:focus-visible {
 
 .dev-state-summary strong[data-tone='warn'] { color: var(--color-error); }
 .dev-state-summary strong[data-tone='good'] { color: var(--color-success); }
+
+/* ------------------------------------------------------------- waveform */
+
+.waveform {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  border-radius: 6px;
+  background: var(--color-hover);
+  cursor: pointer;
+  overflow: hidden;
+  /* the row it sits in is often a link or a button; a drag must not select text */
+  user-select: none;
+  -webkit-user-drag: element;
+}
+
+.waveform svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.waveform__shape {
+  stroke: color-mix(in srgb, var(--color-muted) 62%, transparent);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.waveform:hover .waveform__shape {
+  stroke: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+
+.waveform[data-playing] .waveform__shape {
+  stroke: var(--color-accent);
+}
+
+/* The played region is painted under the shape, so the waveform reads as
+   filling up rather than being covered over. */
+.waveform__played {
+  fill: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.waveform__head {
+  stroke: var(--color-accent);
+  stroke-width: 1.5px;
+}
+
+.waveform[data-loading] { opacity: 0.6; }
+
+/* Holds the row's height while the peaks are still being fetched, so a list
+   does not reflow item by item as each waveform lands. */
+.waveform__placeholder {
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1.5px;
+  background: color-mix(in srgb, var(--color-muted) 30%, transparent);
+}
+
+.waveform:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* --- golden results list --- */
+
+.golden-results__mode {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.golden-results__mode button {
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.golden-results__mode button[data-active] {
+  border-color: transparent;
+  color: var(--color-surface);
+  background: var(--color-accent);
+}
+
+.golden-results__list > li {
+  display: grid;
+  align-items: center;
+  gap: 10px 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 1.1fr);
+}
+
+.golden-results__file {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.golden-results__file strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.golden-results__list > li[data-playing] .golden-results__file strong {
+  color: var(--color-accent);
+}
+
+.golden-results__mode small {
+  align-self: center;
+  margin-left: 6px;
+  color: var(--color-muted);
+  font-size: 10px;
+}

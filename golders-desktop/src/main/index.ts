@@ -1,8 +1,18 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import type { OpenDialogOptions } from 'electron'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { basename, extname, join as pathJoin } from 'node:path'
 import { join } from 'node:path'
 import * as api from './api'
+
+// startDrag refuses an empty icon, so the drag ghost is a real image: a rounded
+// square in the app's accent colour, inlined to keep main free of asset loading.
+const DRAG_ICON = nativeImage.createFromDataURL(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAP0lEQVR42mMo' +
+    'TXJiGEgMY/QMEB58DvhPJzzqgFEHjDpg1AGjDhh1wKgDRh0w6oBRB4w6YNQBg9cBI7dvOGAYAM0egEa2' +
+    '4GEYAAAAAElFTkSuQmCC'
+)
+
 
 /** How often main asks Python how an ingest job is doing. */
 const POLL_MS = 400
@@ -247,6 +257,51 @@ app.whenReady().then(() => {
 
   ipcMain.handle('essentia:summary', () => api.essentiaSummary())
   ipcMain.handle('dev:presets', () => api.presets())
+  ipcMain.handle(
+    'chunk:peaks',
+    (_event, chunkId: string, buckets: number | undefined, bpm: number | null | undefined) =>
+      api.chunkPeaks(chunkId, buckets, bpm)
+  )
+
+  // --- dragging a suggestion into Ableton -------------------------------------
+  //
+  // 96% of chunks are a slice of a longer file, so handing Ableton the original
+  // path would drop a seven-minute stem for four auditioned bars. The slice is
+  // rendered to a temp WAV instead -- at its own tempo, with the BPM in the
+  // name, so Live's auto-warp does the time-stretching. Live's warp is better
+  // than a one-shot phase vocoder and stays reversible; baking a stretch in
+  // would leave the user warping on top of a stretch.
+  //
+  // Written on pointer-down rather than on dragstart: `startDrag` needs the file
+  // to exist at the moment it is called, and awaiting a render inside the
+  // dragstart handler loses the gesture.
+  const dragCache = new Map<string, string>()
+
+  /** Basename only, .wav enforced: this string reaches the filesystem. */
+  function safeName(name: string): string {
+    const base = basename(name).replace(/[/\\:\u0000]/g, '_').trim() || 'sample'
+    return extname(base).toLowerCase() === '.wav' ? base : `${base}.wav`
+  }
+
+  ipcMain.handle('chunk:drag-prepare', async (_event, chunkId: string, fileName: string) => {
+    const cached = dragCache.get(chunkId)
+    if (cached) return cached
+
+    // No bpm: the file leaves at its own tempo, exactly as it sits in the library.
+    const bytes = await api.chunkAudio(chunkId, {})
+    const dir = pathJoin(app.getPath('temp'), 'golddigger-drag')
+    await mkdir(dir, { recursive: true })
+    const file = pathJoin(dir, safeName(fileName))
+    await writeFile(file, Buffer.from(bytes))
+    dragCache.set(chunkId, file)
+    return file
+  })
+
+  // `send`, not `handle`: startDrag has to run synchronously inside the drag.
+  ipcMain.on('chunk:drag-start', (event, file: string) => {
+    if (!file) return
+    event.sender.startDrag({ file, icon: DRAG_ICON })
+  })
   ipcMain.handle('dev:corpus-stats', () => api.corpusStats())
 
   ipcMain.handle('chunk:audio', (_event, chunkId: string, options: api.AuditionOptions) =>

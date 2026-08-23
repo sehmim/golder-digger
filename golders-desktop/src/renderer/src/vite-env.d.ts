@@ -3,6 +3,7 @@
 import type {
   AnalyzeResult,
   ApiStatus,
+  ChunkPeaks,
   CorpusStats,
   EssentiaSummary,
   PresetList,
@@ -45,6 +46,9 @@ declare global {
       startEssentia: (root: string) => Promise<string>
       essentiaSummary: () => Promise<EssentiaSummary>
       presets: () => Promise<PresetList>
+      chunkPeaks: (chunkId: string, buckets?: number, bpm?: number | null) => Promise<ChunkPeaks>
+      prepareChunkDrag: (chunkId: string, fileName: string) => Promise<string>
+      startChunkDrag: (file: string) => void
       corpusStats: () => Promise<CorpusStats>
       chunkAudio: (
         chunkId: string,

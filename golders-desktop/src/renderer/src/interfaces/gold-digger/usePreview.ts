@@ -21,6 +21,15 @@ export interface PreviewSession {
   bpm?: number | null
   /** The session's own chunks, mixed underneath the candidate. */
   contextIds?: string[]
+  /**
+   * Start with the candidate alone rather than over the session.
+   *
+   * The stepped flow opens on the mix because judging the *combination* is its
+   * whole purpose and the step says so. A bare results list has no such framing:
+   * clicking a sample there and hearing the entire project underneath it reads
+   * as the wrong file playing, not as a considered default.
+   */
+  soloFirst?: boolean
 }
 
 export interface Preview {
@@ -30,6 +39,10 @@ export interface Preview {
   loading: string | null
   error: string | null
   toggle: (chunkId: string) => void
+  /** How far through the sounding chunk, 0-1. Zero when nothing is playing. */
+  progress: number
+  /** Jump within the sounding chunk. Ignored while nothing is playing. */
+  seek: (fraction: number) => void
   /** True when candidates play alone rather than over the session. */
   candidateOnly: boolean
   setCandidateOnly: (value: boolean) => void
@@ -39,7 +52,8 @@ export function usePreview(session: PreviewSession = {}): Preview {
   const [playing, setPlaying] = useState<string | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [candidateOnly, setCandidateOnly] = useState(false)
+  const [candidateOnly, setCandidateOnly] = useState(session.soloFirst ?? false)
+  const [progress, setProgress] = useState(0)
 
   const element = useRef<HTMLAudioElement | null>(null)
   const urls = useRef(new Map<string, string>())
@@ -66,13 +80,23 @@ export function usePreview(session: PreviewSession = {}): Preview {
     // React StrictMode mounts this effect twice in development.
     alive.current = true
 
-    const stop = (): void => setPlaying(null)
+    const stop = (): void => {
+      setPlaying(null)
+      setProgress(0)
+    }
+    // `timeupdate` rather than rAF: it fires often enough for a playhead and
+    // stops on its own when the element pauses, so nothing has to be cancelled.
+    const tick = (): void => {
+      setProgress(audio.duration > 0 ? audio.currentTime / audio.duration : 0)
+    }
     audio.addEventListener('ended', stop)
+    audio.addEventListener('timeupdate', tick)
 
     return () => {
       alive.current = false
       wanted.current = null
       audio.removeEventListener('ended', stop)
+      audio.removeEventListener('timeupdate', tick)
       audio.pause()
       for (const url of urls.current.values()) URL.revokeObjectURL(url)
       urls.current.clear()
@@ -86,6 +110,7 @@ export function usePreview(session: PreviewSession = {}): Preview {
     audio?.pause()
     wanted.current = null
     setPlaying(null)
+    setProgress(0)
   }, [renderKey])
 
   const toggle = useCallback(
@@ -102,6 +127,7 @@ export function usePreview(session: PreviewSession = {}): Preview {
 
       audio.pause()
       setError(null)
+      setProgress(0)
 
       const cacheKey = `${chunkId}@${renderKey}`
       wanted.current = cacheKey
@@ -157,5 +183,13 @@ export function usePreview(session: PreviewSession = {}): Preview {
     [playing, renderKey, bpm, candidateOnly, session.contextIds]
   )
 
-  return { playing, loading, error, toggle, candidateOnly, setCandidateOnly }
+  const seek = useCallback((fraction: number) => {
+    const audio = element.current
+    if (!audio || !(audio.duration > 0)) return
+    const target = Math.min(1, Math.max(0, fraction))
+    audio.currentTime = target * audio.duration
+    setProgress(target)
+  }, [])
+
+  return { playing, loading, error, toggle, progress, seek, candidateOnly, setCandidateOnly }
 }
