@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import json
+from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
@@ -59,6 +60,18 @@ class AnalyzeReq(BaseModel):
     k: int = Field(config.DEFAULT_K, ge=1, le=100)
     session_path: str | None = Field(
         None, description="the .als these chunks came from; anchors tempo and key")
+    active_roots: list[str] | None = Field(
+        None, description="candidate folders; null means the full legacy corpus")
+
+
+class FolderStatusReq(BaseModel):
+    roots: list[str]
+
+
+class LibraryFilesReq(BaseModel):
+    roots: list[str] | None = None
+    limit: int = Field(100, ge=1, le=250)
+    offset: int = Field(0, ge=0)
 
 
 class TagReq(BaseModel):
@@ -189,6 +202,90 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
     return {"total": total, "count": len(rows), "chunks": rows}
 
 
+@app.post("/library/files")
+def library_files(req: LibraryFilesReq):
+    """Human-scale, file-level summaries for inspection tools.
+
+    The corpus is chunk-oriented. Group here so a developer window can paginate
+    files without copying every chunk through shared application state.
+    """
+    if req.roots == []:
+        return {"total": 0, "count": 0, "offset": req.offset, "files": []}
+
+    where = ""
+    args: list[str] = []
+    if req.roots is not None:
+        clauses = []
+        for root in req.roots:
+            normalized = str(Path(root).resolve(strict=False)).rstrip(os.sep)
+            escaped = (normalized.replace("\\", "\\\\")
+                       .replace("%", "\\%").replace("_", "\\_"))
+            clauses.append("(c.path = ? OR c.path LIKE ? ESCAPE '\\')")
+            args.extend((normalized, f"{escaped}{os.sep}%"))
+        where = f" WHERE {' OR '.join(clauses)}"
+
+    conn = _conn()
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM (SELECT 1 FROM chunks c{where} GROUP BY c.path, c.file_hash)",
+        args).fetchone()[0]
+    sql = f"""SELECT c.path, c.file_hash, f.duration, f.status, f.ingested_at,
+                     COUNT(*) AS chunks, AVG(c.bpm) AS bpm,
+                     GROUP_CONCAT(DISTINCT c.tonic_pc) AS tonic_pcs,
+                     GROUP_CONCAT(DISTINCT c.role) AS roles,
+                     MAX(COALESCE(c.synthetic, 1)) AS synthetic,
+                     MAX(CASE WHEN e.file_hash IS NULL THEN 0 ELSE 1 END) AS essentia
+              FROM chunks c
+              LEFT JOIN files f ON f.file_hash = c.file_hash
+              LEFT JOIN essentia e ON e.file_hash = c.file_hash
+              {where}
+              GROUP BY c.path, c.file_hash
+              ORDER BY c.path
+              LIMIT ? OFFSET ?"""
+    page = [dict(row) for row in conn.execute(sql, [*args, req.limit, req.offset])]
+    for row in page:
+        pcs = [int(value) for value in (row.pop("tonic_pcs") or "").split(",") if value]
+        row["keys"] = [config.PITCH_NAMES[pc] for pc in pcs if pc >= 0]
+        row["roles"] = [value for value in (row["roles"] or "").split(",") if value]
+        row["synthetic"] = bool(row["synthetic"])
+        row["essentia"] = bool(row["essentia"])
+        row["bpm"] = round(row["bpm"], 1) if row["bpm"] is not None else None
+
+    return {"total": total, "count": len(page), "offset": req.offset, "files": page}
+
+
+def _under_root(path: str, root: str) -> bool:
+    """Path-aware containment: `/samples/a` must not match `/samples/able`."""
+    try:
+        Path(path).resolve(strict=False).relative_to(Path(root).resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
+def _root_mask(corpus: scoring.Corpus, roots: list[str] | None) -> np.ndarray | None:
+    if roots is None:
+        return None
+    return np.array([
+        any(_under_root(row["path"], root) for root in roots)
+        for row in corpus.rows
+    ], dtype=bool)
+
+
+@app.post("/folders/status")
+def folder_status(req: FolderStatusReq):
+    corpus = state["corpus"]
+    rows = corpus.rows if corpus is not None else []
+    return {
+        "folders": [
+            {
+                "root": root,
+                "chunks": sum(_under_root(row["path"], root) for row in rows),
+            }
+            for root in req.roots
+        ]
+    }
+
+
 def _load_als_cached(path: str) -> dict:
     """The set behind the dial, reparsed only when the file changes.
 
@@ -211,6 +308,7 @@ def _load_als_cached(path: str) -> dict:
 @app.post("/session/analyze")
 def analyze(req: AnalyzeReq):
     corpus = _corpus()
+    allowed = _root_mask(corpus, req.active_roots)
     try:
         ctx = scoring.build_context(corpus, req.context_ids)
     except ValueError as exc:
@@ -223,9 +321,11 @@ def analyze(req: AnalyzeReq):
     applied = ableton.apply_session_context(
         ctx, _load_als_cached(req.session_path)) if req.session_path else []
 
-    results, floor = scoring.select(corpus, ctx, req.distance, req.k)
+    results, floor = scoring.select(corpus, ctx, req.distance, req.k, allowed)
+    candidate_count = int(allowed.sum()) if allowed is not None else len(corpus)
+    candidate_synthetic = corpus.synthetic[allowed] if allowed is not None else corpus.synthetic
     return {"distance": req.distance, "fit_floor": round(floor, 3),
-            "corpus_size": len(corpus), "count": len(results), "results": results,
+            "corpus_size": candidate_count, "count": len(results), "results": results,
             "session_context": applied,
             "context": {"bpm": ctx["bpm"],
                         "tonic": (config.PITCH_NAMES[ctx["tonic"]]
@@ -234,8 +334,8 @@ def analyze(req: AnalyzeReq):
             # Read off the corpus, not off config.MOCK: what matters is how the
             # rows being ranked were written, and a library ingested under mock
             # stays fiction long after the flag is turned off.
-            "synthetic_novelty": bool(corpus.synthetic.any()),
-            "synthetic_chunks": int(corpus.synthetic.sum())}
+            "synthetic_novelty": bool(candidate_synthetic.any()),
+            "synthetic_chunks": int(candidate_synthetic.sum())}
 
 
 def _session_key(als: dict) -> str | None:

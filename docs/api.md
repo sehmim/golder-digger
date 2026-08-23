@@ -47,6 +47,20 @@ job.
 `?limit=&offset=&role=` → `{total, count, chunks[]}`, each chunk with `tonic` resolved
 to a pitch name.
 
+### `POST /library/files`
+`{roots?, limit, offset}` → `{total, count, offset, files[]}`. This is the
+human-scale, file-level projection used by the Dev inspector. It groups chunks by
+file and reports path, duration, chunk count, average BPM, observed keys and roles,
+synthetic-vector status, Essentia coverage, and ingestion time. Results are ordered
+by path and paginated; `roots: null` means the full corpus while `roots: []` means
+none.
+
+### `POST /folders/status`
+`{roots: [...]}` → `{folders: [{root, chunks}]}`. Counts analyzed chunks beneath
+each root using path-aware containment. The desktop uses this to reconstruct
+runtime availability from the current corpus rather than persisting a status that
+could become stale.
+
 ### `POST /session/als`
 `{path}` → parses a Live set and resolves its samples against the corpus.
 
@@ -75,8 +89,9 @@ not a readable `.als`.
 Note this route hashes every referenced file that exists on disk — see `ableton.md`.
 
 ### `POST /session/analyze`
-`{context_ids[], distance, k, session_path?}` → `{distance, fit_floor, corpus_size,
-count, results[], session_context[], context{}, synthetic_novelty, synthetic_chunks}`.
+`{context_ids[], distance, k, session_path?, active_roots?}` → `{distance,
+fit_floor, corpus_size, count, results[], session_context[], context{},
+synthetic_novelty, synthetic_chunks}`.
 Each result carries `fit`, `novelty`, `components{H,R,P}`, plus `role_source` and the
 chunk's top three `tags`. **400** if no supplied id is known to the corpus, **404** if
 `session_path` names no file, **409** if the corpus is empty.
@@ -90,6 +105,11 @@ is several requests against one unchanged file.
 
 `context` is what Fit was actually matched against, so a UI can say "124 BPM, from
 Live" rather than leaving the user to guess.
+
+`active_roots` limits candidate rows using path-aware containment. Omitting it or
+sending `null` preserves the legacy whole corpus. Sending `[]` deliberately yields
+no candidates. Context chunks remain available for building the musical context
+even when their files are outside the active candidate roots.
 
 `synthetic_novelty` is true when any ranked chunk's CLAP vector was synthesized from
 its file hash (mock mode) or predates the `chunks.synthetic` column. Novelty is a

@@ -16,6 +16,19 @@ body {
   margin: 0;
 }
 
+/* Electron's hiddenInset title bar lets the renderer cover the native title
+   area. Keep one stable drag target above every primary interface. */
+.renderer-shell::before {
+  position: fixed;
+  z-index: 10000;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 38px;
+  content: '';
+  -webkit-app-region: drag;
+}
+
 .page {
   display: flex;
   min-height: 100vh;
@@ -454,6 +467,7 @@ button:focus-visible {
   padding: 52px 48px 42px;
   color: var(--color-text);
   background: var(--color-background);
+  -webkit-app-region: drag;
 }
 
 .dev-page__header {
@@ -547,6 +561,7 @@ button:focus-visible {
   display: grid;
   flex: 1;
   place-items: center;
+  -webkit-app-region: no-drag;
 }
 
 /* ---------------------------------------------------------------- project */
@@ -1162,6 +1177,219 @@ button:focus-visible {
 
 /* ---------------------------------------------------------- dev state view */
 
+.dev-page__workspace {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  gap: 18px;
+  grid-template-columns: minmax(270px, 0.34fr) minmax(0, 0.66fr);
+  -webkit-app-region: no-drag;
+}
+
+.dev-sidebar {
+  min-height: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.dev-sidebar .dev-state-panel,
+.dev-sidebar .dev-state-raw {
+  margin-bottom: 14px;
+}
+
+.dev-inspector {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.dev-tabs {
+  display: flex;
+  min-height: 48px;
+  align-items: end;
+  gap: 4px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-tabs button {
+  height: 48px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.dev-tabs button[data-active] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.dev-tab-panel {
+  min-height: 0;
+  flex: 1;
+}
+
+.dev-files {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.dev-files__toolbar {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-folder-filter {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.dev-folder-filter button,
+.dev-files__refresh,
+.dev-files__pagination button {
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dev-folder-filter button[data-active] {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.dev-files__refresh {
+  flex: 0 0 auto;
+}
+
+.dev-files__summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-files__message {
+  margin: auto;
+  padding: 24px;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.dev-file-table {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  transition: opacity 120ms ease;
+}
+
+.dev-file-table[data-loading] {
+  opacity: 0.5;
+}
+
+.dev-file-table__head,
+.dev-file-table li {
+  display: grid;
+  min-width: 590px;
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: minmax(150px, 1.7fr) minmax(70px, 0.7fr) minmax(115px, 1fr) minmax(125px, 1.2fr) 42px;
+}
+
+.dev-file-table__head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  min-height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.dev-file-table ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-file-table li {
+  min-height: 44px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.dev-file-table li:hover {
+  background: var(--color-hover);
+}
+
+.dev-file-table li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-file-table .dev-file-name {
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dev-files__pagination {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.dev-files__pagination button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .dev-page__canvas {
   display: block;
   padding-top: 30px;
@@ -1285,6 +1513,10 @@ button:focus-visible {
 }
 
 .dev-directory-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   overflow: hidden;
   padding: 9px 10px;
   border-radius: 7px;
@@ -1292,6 +1524,16 @@ button:focus-visible {
   font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dev-directory-list li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dev-directory-list li small {
+  color: var(--color-muted);
+  font: 9px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .dev-directory-list li:hover {
@@ -1386,10 +1628,101 @@ button:focus-visible {
   place-items: center;
 }
 
-.golden-page > .interface-menu {
+.golden-page__controls {
   position: absolute;
   top: 52px;
   right: 48px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.golden-folders {
+  display: flex;
+  min-width: 38px;
+  align-items: center;
+  gap: 4px;
+}
+
+.golden-folders__strip {
+  display: flex;
+  max-width: min(420px, 48vw);
+  gap: 6px;
+  overflow: hidden;
+}
+
+.golden-folder {
+  display: flex;
+  min-width: 0;
+  max-width: 118px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.golden-folder:hover {
+  background: var(--color-hover);
+}
+
+.golden-folder[data-disabled] {
+  opacity: 0.42;
+}
+
+.golden-folder__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.golden-folder__status {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+
+.golden-folder[data-analysis='analyzing'] .golden-folder__status {
+  background: var(--color-accent);
+}
+
+.golden-folder[data-analysis='failed'] .golden-folder__status {
+  background: var(--color-error);
+}
+
+.folder-manager-trigger {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  cursor: pointer;
+  place-items: center;
+}
+
+.folder-manager-trigger:hover {
+  opacity: 0.6;
+}
+
+.folder-manager-trigger svg {
+  width: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .golden-knob {
@@ -1461,6 +1794,152 @@ button:focus-visible {
 .golden-knob[data-style='minimal'] .golden-knob__indicator::before {
   width: 2px;
   background: var(--color-text);
+}
+
+/* --------------------------------------------------------- folder manager */
+
+.folder-manager-layer {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  padding: 48px;
+  background: color-mix(in srgb, var(--color-text) 24%, transparent);
+  place-items: center;
+}
+
+.folder-manager {
+  display: flex;
+  width: min(680px, 100%);
+  max-height: min(620px, calc(100vh - 96px));
+  flex-direction: column;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-background);
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--color-text) 28%, transparent);
+}
+
+.folder-manager__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.folder-manager__header h1 {
+  font-size: 24px;
+}
+
+.folder-manager__close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.folder-manager__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.folder-manager__list li {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.folder-manager__list li[data-focused] {
+  border-color: var(--color-accent);
+}
+
+.folder-manager__identity {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.folder-manager__identity strong,
+.folder-manager__identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-manager__identity strong {
+  font-size: 14px;
+}
+
+.folder-manager__identity span {
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.folder-manager__status {
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.folder-manager__status[data-analysis='available'] {
+  color: var(--color-success);
+}
+
+.folder-manager__status[data-analysis='failed'] {
+  color: var(--color-error);
+}
+
+.folder-manager__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.folder-manager__actions button,
+.folder-manager__add {
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.folder-manager__actions button:hover,
+.folder-manager__add:hover {
+  background: var(--color-hover);
+}
+
+.folder-manager__empty {
+  margin: 32px 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.folder-manager__add {
+  align-self: flex-start;
+  margin-top: 18px;
 }
 
 /* ------------------------------------------------------------ settings UI */

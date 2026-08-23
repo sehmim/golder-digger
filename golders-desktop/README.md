@@ -29,30 +29,44 @@ ApplicationStateProvider
 RendererShell
         ├── Gold Digger App
         ├── Golden UI
-        ├── Dev
-        └── Settings
+        ├── Settings
+        └── Folder Manager overlay
+
+Dev window ← snapshots from the primary renderer
 ```
 
 The provider owns information shared by the application: API readiness,
-directories represented by ingest jobs, ingest progress, the connected project,
-and configuration. The shell owns which interface is visible. Each interface is
-a sibling and owns its rendering and navigation state independently.
+persistent folder records, ingest progress, the connected project, and
+configuration. The shell owns which primary interface is visible. Each primary
+interface is a sibling and owns its rendering and navigation state independently.
+Dev is a separate, single-instance observer window and does not create another
+application-state provider.
+
+Lightweight application settings are stored as versioned JSON beneath Electron's
+per-user `userData` directory. They store folder intent, not runtime analysis
+facts. Audio analysis remains in SQLite.
 
 Current interfaces:
 
 | Interface | Purpose |
 |---|---|
 | Gold Digger App | Primary product workflow: sources, project, and digging. |
-| Golden UI | Experimental one-knob interface. |
-| Dev | Truthful inspection of application state and interface diagnostics. |
+| Golden UI | Experimental knob and minimal folder strip. |
 | Settings | Application configuration, currently including knob appearance. |
+
+Dev is a developer tool rather than a primary interface. It displays live state
+snapshots while the application remains interactive in its own window. Its left
+column shows application state; its larger tabbed inspector begins with a
+paginated, folder-filterable view of analyzed files.
 
 ## Navigation
 
-- `Command-Option-D` always opens Dev.
+- `Command-Option-D` opens or focuses the single Dev window.
 - `Command-Option-S` always opens Settings.
-- The shared hamburger menu is currently rendered by Golden UI, Dev, and Settings.
+- The shared hamburger menu is currently rendered by Golden UI and Settings.
 - The current interface remains visible but disabled in the menu.
+- Folder Manager is a shell overlay reached beside the Golden UI hamburger, not
+  another menu destination.
 
 ## Shared UI rules
 

@@ -12,6 +12,7 @@ import Knob, { MAX, MIN } from '../components/Knob'
 
 interface DigStepProps {
   set: SessionSet
+  activeRoots: string[] | null
   onBack: () => void
 }
 
@@ -83,7 +84,7 @@ function meta(candidate: Candidate): string {
   return parts.join(' · ')
 }
 
-export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Element {
+export default function DigStep({ set, activeRoots, onBack }: DigStepProps): React.JSX.Element {
   const [notch, setNotch] = useState(DEFAULT_NOTCH)
   const [result, setResult] = useState<AnalyzeResult | null>(null)
   const [working, setWorking] = useState(true)
@@ -94,6 +95,7 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
 
   // Only the newest request may write state: a sweep fires several in order.
   const generation = useRef(0)
+  const activeRootsKey = activeRoots?.join('\u0000') ?? null
 
   useEffect(() => {
     const mine = ++generation.current
@@ -103,7 +105,7 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
       void window.desktop
         // The set's own path, so the engine anchors tempo and key on what Live
         // declares rather than on whichever samples happened to resolve.
-        .analyze(set.context_ids, distanceOf(notch), RESULT_COUNT, set.session.path)
+        .analyze(set.context_ids, distanceOf(notch), RESULT_COUNT, set.session.path, activeRoots)
         .then((next) => {
           if (generation.current !== mine) return
           setResult(next)
@@ -119,7 +121,7 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
     }, SETTLE_MS)
 
     return () => clearTimeout(timer)
-  }, [notch, set.context_ids, set.session.path])
+  }, [activeRootsKey, notch, set.context_ids, set.session.path])
 
   const results = result?.results ?? []
 

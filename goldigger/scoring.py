@@ -126,29 +126,33 @@ def fit_all(corpus: Corpus, ctx: dict) -> dict[str, np.ndarray]:
 
 # ---------------------------------------------------------------- novelty
 
-def novelty_all(corpus: Corpus, ctx: dict) -> np.ndarray:
-    """Percentile of CLAP distance ranked across the WHOLE corpus.
+def novelty_all(corpus: Corpus, ctx: dict, allowed: np.ndarray | None = None) -> np.ndarray:
+    """Percentile of CLAP distance ranked across the active candidate corpus.
 
-    Not across the Fit-passing subset: FIT_FLOOR relaxes when the pool is sparse,
-    which would silently shift every novelty value for the same context.
+    Still not across the Fit-passing subset: FIT_FLOOR relaxes when the pool is
+    sparse, which would silently shift every novelty value for the same context.
     """
     d = 1.0 - corpus.clap @ ctx["clap"]
-    order = np.argsort(d)
-    pct = np.empty(len(d), dtype=np.float64)
-    pct[order] = np.linspace(0.0, 1.0, len(d))
+    indices = np.where(allowed)[0] if allowed is not None else np.arange(len(d))
+    pct = np.zeros(len(d), dtype=np.float64)
+    order = indices[np.argsort(d[indices])]
+    if len(order):
+        pct[order] = np.linspace(0.0, 1.0, len(order))
     return pct
 
 
 # ---------------------------------------------------------------- select
 
-def select(corpus: Corpus, ctx: dict, distance: float, k: int = config.DEFAULT_K):
+def select(corpus: Corpus, ctx: dict, distance: float, k: int = config.DEFAULT_K,
+           allowed: np.ndarray | None = None):
     """Greedy MMR against a target novelty band.
 
     Greedy because the redundancy term compares against what is *already picked* --
     undefined in a one-shot top-K.
     """
     scores = fit_all(corpus, ctx)
-    fit, nov = scores["fit"], novelty_all(corpus, ctx)
+    allowed = np.ones(len(corpus), dtype=bool) if allowed is None else allowed
+    fit, nov = scores["fit"], novelty_all(corpus, ctx, allowed)
     q = np.clip(distance / 100.0, 0.0, 1.0)
 
     # never return the context's own file: otherwise DISTANCE 10 just hands back
@@ -157,7 +161,7 @@ def select(corpus: Corpus, ctx: dict, distance: float, k: int = config.DEFAULT_K
 
     floor = config.FIT_FLOOR
     while True:
-        pool = np.where((fit >= floor) & ~same_file)[0]
+        pool = np.where((fit >= floor) & ~same_file & allowed)[0]
         if len(pool) >= 3 * k or floor <= config.FIT_FLOOR_MIN:
             break
         floor -= config.FIT_FLOOR_STEP

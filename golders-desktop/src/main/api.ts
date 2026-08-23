@@ -65,6 +65,27 @@ export interface EssentiaSummary {
   no_key: number
 }
 
+export interface AnalysisFile {
+  path: string
+  file_hash: string
+  duration: number | null
+  status: string | null
+  ingested_at: string | null
+  chunks: number
+  bpm: number | null
+  keys: string[]
+  roles: string[]
+  synthetic: boolean
+  essentia: boolean
+}
+
+export interface AnalysisFilesResult {
+  total: number
+  count: number
+  offset: number
+  files: AnalysisFile[]
+}
+
 /** One row of the results list: a chunk the engine picked for the context. */
 export interface Candidate {
   chunk_id: string
@@ -258,11 +279,33 @@ export function loadSet(path: string): Promise<SessionSet> {
   return request('/session/als', { method: 'POST', body: JSON.stringify({ path }) })
 }
 
+export function folderStatus(roots: string[]): Promise<{ folders: { root: string; chunks: number }[] }> {
+  return request('/folders/status', { method: 'POST', body: JSON.stringify({ roots }) })
+}
+
+export function analysisFiles(
+  roots: string[] | null,
+  limit: number,
+  offset: number
+): Promise<AnalysisFilesResult> {
+  return request('/library/files', {
+    method: 'POST',
+    body: JSON.stringify({ roots, limit, offset })
+  })
+}
+
 export function analyze(contextIds: string[], distance: number, k: number,
-                       sessionPath?: string | null): Promise<AnalyzeResult> {
+                       sessionPath?: string | null,
+                       activeRoots?: string[] | null): Promise<AnalyzeResult> {
   return request('/session/analyze', {
     method: 'POST',
-    body: JSON.stringify({ context_ids: contextIds, distance, k, session_path: sessionPath ?? null })
+    body: JSON.stringify({
+      context_ids: contextIds,
+      distance,
+      k,
+      session_path: sessionPath ?? null,
+      active_roots: activeRoots
+    })
   })
 }
 

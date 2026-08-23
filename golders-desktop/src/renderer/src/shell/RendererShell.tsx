@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import DevApp from '../interfaces/dev/DevApp'
+import { useApplication } from '../application/ApplicationState'
 import GoldDiggerApp from '../interfaces/gold-digger/GoldDiggerApp'
 import type { GoldDiggerDiagnostics } from '../interfaces/gold-digger/types'
 import GoldenApp from '../interfaces/golden/GoldenApp'
 import SettingsApp from '../interfaces/settings/SettingsApp'
 import type { InterfaceId } from '../shared/interfaceNavigation'
+import FolderManager from './FolderManager'
 
 const INITIAL_GOLD_DIGGER_DIAGNOSTICS: GoldDiggerDiagnostics = {
   currentStep: 'sources',
@@ -14,17 +15,32 @@ const INITIAL_GOLD_DIGGER_DIAGNOSTICS: GoldDiggerDiagnostics = {
 }
 
 export default function RendererShell(): React.JSX.Element {
-  const [activeInterface, setActiveInterface] = useState<InterfaceId>('gold-digger')
+  const { state } = useApplication()
+  const [activeInterface, setActiveInterface] = useState<Exclude<InterfaceId, 'dev'>>('gold-digger')
+  const [folderManager, setFolderManager] = useState<{
+    open: boolean
+    focusedFolderId: string | null
+  }>({ open: false, focusedFolderId: null })
   const [goldDiggerDiagnostics, setGoldDiggerDiagnostics] = useState(INITIAL_GOLD_DIGGER_DIAGNOSTICS)
   const updateGoldDiggerDiagnostics = useCallback(
     (diagnostics: GoldDiggerDiagnostics) => setGoldDiggerDiagnostics(diagnostics),
     []
   )
 
-  useEffect(() => {
-    if (!window.desktop.onDevPageToggle) return
-    return window.desktop.onDevPageToggle(() => setActiveInterface('dev'))
+  const navigate = useCallback((destination: InterfaceId): void => {
+    if (destination === 'dev') {
+      void window.desktop.openDevWindow()
+      return
+    }
+    setActiveInterface(destination)
   }, [])
+
+  useEffect(() => {
+    window.desktop.publishDevSnapshot({
+      application: state,
+      interfaces: { goldDigger: goldDiggerDiagnostics }
+    })
+  }, [goldDiggerDiagnostics, state])
 
   useEffect(() => {
     if (!window.desktop.onSettingsPageOpen) return
@@ -42,7 +58,7 @@ export default function RendererShell(): React.JSX.Element {
 
       if (event.code === 'KeyD') {
         event.preventDefault()
-        setActiveInterface('dev')
+        void window.desktop.openDevWindow()
       }
 
       if (event.code === 'KeyS') {
@@ -60,18 +76,23 @@ export default function RendererShell(): React.JSX.Element {
       <div className="interface-view" hidden={activeInterface !== 'gold-digger'}>
         <GoldDiggerApp onDiagnosticsChange={updateGoldDiggerDiagnostics} />
       </div>
-      <div className="interface-view" hidden={activeInterface !== 'dev'}>
-        <DevApp
-          goldDigger={goldDiggerDiagnostics}
-          onNavigate={setActiveInterface}
+      <div className="interface-view" hidden={activeInterface !== 'golden'}>
+        <GoldenApp
+          onNavigate={navigate}
+          onOpenFolderManager={(folderId) =>
+            setFolderManager({ open: true, focusedFolderId: folderId ?? null })
+          }
         />
       </div>
-      <div className="interface-view" hidden={activeInterface !== 'golden'}>
-        <GoldenApp onNavigate={setActiveInterface} />
-      </div>
       <div className="interface-view" hidden={activeInterface !== 'settings'}>
-        <SettingsApp onNavigate={setActiveInterface} />
+        <SettingsApp onNavigate={navigate} />
       </div>
+      {folderManager.open ? (
+        <FolderManager
+          focusedFolderId={folderManager.focusedFolderId}
+          onClose={() => setFolderManager({ open: false, focusedFolderId: null })}
+        />
+      ) : null}
     </div>
   )
 }

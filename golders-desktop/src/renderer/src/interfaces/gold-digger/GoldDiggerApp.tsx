@@ -113,7 +113,11 @@ export default function GoldDiggerApp({
             ) : null}
 
             {candidate === 'dig' && state.project ? (
-              <DigStep set={state.project} onBack={() => goTo('project')} />
+              <DigStep
+                set={state.project}
+                activeRoots={state.activeFolderRoots}
+                onBack={() => goTo('project')}
+              />
             ) : null}
           </div>
         ))}

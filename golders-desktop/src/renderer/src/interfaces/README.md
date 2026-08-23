@@ -7,8 +7,13 @@ Each folder in this directory is a complete renderer UI. Interfaces may consume
 the shared application provider and application services, but must not import
 components, styles, or navigation state from another interface.
 
-The neutral shell owns only which interface is visible. It keeps every interface
-mounted so local UI state survives while comparing interfaces back-to-back.
+`dev/` is the deliberate exception to the sibling-interface pattern. It is a
+separate, read-only Electron window that receives typed snapshots from the primary
+renderer and must not initialize its own application provider.
+
+The neutral shell owns which interface is visible and application-level overlays
+that must render above multiple interfaces. It keeps every interface mounted so
+local UI state survives while comparing interfaces back-to-back.
 
 To add another interface:
 
