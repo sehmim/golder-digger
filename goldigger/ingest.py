@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config, db, essentia_runner, features, mock
+from . import config, db, essentia_runner, features, filename, mock
 
 _clap = None
 
@@ -60,6 +60,34 @@ def _role_or_tags(role, role_source, tags) -> tuple[str | None, str]:
         return role, role_source
     inferred = features.role_from_tags(tags)
     return (inferred, "clap") if inferred else (None, "unknown")
+
+
+def _apply_filename(path, row: dict) -> None:
+    """Fold what the filename claims into a row, recording which side won.
+
+    Applied to both branches on purpose: mock mode is only worth having if it
+    runs the same code, and this path is reachable with no model loaded at all.
+
+    The stored confidence always describes the stored value -- a tempo taken
+    from the filename carries the filename's certainty, not the confidence of
+    the beat tracker that failed to find one.
+    """
+    name = str(path)
+    bpm, bpm_c = filename.parse_bpm(name)
+    row["bpm"], row["bpm_source"], row["tempo_confidence"] = filename.resolve(
+        row["bpm"], row["tempo_confidence"] or 0.0, bpm, bpm_c)
+
+    pc, is_major, key_c = filename.parse_key(name)
+    if pc is not None and key_c >= (row["key_confidence"] or 0.0):
+        row["tonic_pc"] = pc
+        # a name like "G#" states a root and no mode; the estimate keeps the
+        # half the filename was silent about rather than being discarded whole
+        if is_major is not None:
+            row["is_major"] = int(is_major)
+        row["key_confidence"] = key_c
+        row["key_source"] = "filename"
+    else:
+        row["key_source"] = "audio"
 
 
 def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
@@ -113,7 +141,9 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
                 tonic_pc=pc, is_major=maj, key_confidence=conf,
                 role=r, role_source=src, tonalness=tonal, tempo_confidence=tconf,
                 spectral=mock.spectral(cid), tags=tags,
-                chroma=ch, clap=mock.clap(cid)))
+                chroma=ch, clap=mock.clap(cid), synthetic=1))
+        for r in rows:
+            _apply_filename(path, r)
         return rows
 
     y, sr = features.load_audio(path)
@@ -144,7 +174,7 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
             role=role, role_source=role_source, tonalness=tonal,
             tempo_confidence=features.tempo_confidence(seg, sr, rhythm["bpm"]),
             spectral=features.spectral_stats(seg, sr), tags=None,
-            chroma=ch, clap=None))
+            chroma=ch, clap=None, synthetic=0))
         clips.append(librosa.resample(seg, orig_sr=sr, target_sr=config.CLAP_SR))
 
     clap = _clap_model()
@@ -153,6 +183,7 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
         row["clap"] = vec
         row["tags"] = tags
         row["role"], row["role_source"] = _role_or_tags(role, role_source, tags)
+        _apply_filename(path, row)
     return rows
 
 
@@ -243,18 +274,21 @@ def upsert(conn, rows):
         """INSERT INTO chunks (chunk_id, path, file_hash, chunk_index, t_start, t_end,
                                bpm, beats_per_bar, tonic_pc, is_major, key_confidence,
                                role, role_source, chroma, clap,
-                               tempo_confidence, tonalness, spectral, tags)
+                               tempo_confidence, tonalness, spectral, tags, synthetic,
+                               bpm_source, key_source)
            VALUES (:chunk_id,:path,:file_hash,:chunk_index,:t_start,:t_end,:bpm,
                    :beats_per_bar,:tonic_pc,:is_major,:key_confidence,:role,
                    :role_source,:chroma,:clap,
-                   :tempo_confidence,:tonalness,:spectral,:tags)
+                   :tempo_confidence,:tonalness,:spectral,:tags,:synthetic,
+                   :bpm_source,:key_source)
            ON CONFLICT(chunk_id) DO UPDATE SET
              bpm=excluded.bpm, tonic_pc=excluded.tonic_pc, is_major=excluded.is_major,
              key_confidence=excluded.key_confidence, role=excluded.role,
              role_source=excluded.role_source, chroma=excluded.chroma,
              clap=excluded.clap, tempo_confidence=excluded.tempo_confidence,
              tonalness=excluded.tonalness, spectral=excluded.spectral,
-             tags=excluded.tags""",
+             tags=excluded.tags, synthetic=excluded.synthetic,
+             bpm_source=excluded.bpm_source, key_source=excluded.key_source""",
         [{**r,
           "chroma": db.to_blob(r["chroma"]),
           "clap": db.to_blob(r["clap"]),
@@ -262,6 +296,45 @@ def upsert(conn, rows):
           "tags": json.dumps(r["tags"]) if r["tags"] else None}
          for r in rows])
     conn.commit()
+
+
+# ---------------------------------------------------- keeping rows and disk in step
+
+def relink(conn, path: str, file_hash: str) -> bool:
+    """Point an already-ingested file's rows at where the file actually is.
+
+    Content-hash dedupe correctly recognises a moved or renamed file as already
+    done -- and then leaves its rows naming a path that no longer exists, which
+    is a chunk that cannot be previewed and a result that cannot be opened.
+
+    Only rewritten when the stored path is gone. Two copies of one file are not
+    a move: rewriting on every walk would make them trade the rows back and
+    forth, and neither path would be wrong to begin with.
+    """
+    rows = conn.execute("SELECT DISTINCT path FROM chunks WHERE file_hash=?",
+                        (file_hash,)).fetchall()
+    stale = [r["path"] for r in rows if r["path"] != path and not Path(r["path"]).exists()]
+    if not stale:
+        return False
+    marks = ",".join("?" * len(stale))
+    conn.execute(f"UPDATE chunks SET path=? WHERE file_hash=? AND path IN ({marks})",
+                 (path, file_hash, *stale))
+    conn.execute("UPDATE files SET path=? WHERE file_hash=?", (path, file_hash))
+    return True
+
+
+def drop_stale(conn, path: str, file_hash: str) -> int:
+    """Chunks that claim this path but not the bytes now at it.
+
+    A file edited in place gets a new hash and a new set of chunks, and the old
+    set stays behind describing audio that is no longer there -- surfacing in
+    results under the same filename with a different key and tempo. Only ever
+    called for a file just walked, so `file_hash` is what is on disk right now.
+    """
+    cur = conn.execute("DELETE FROM chunks WHERE path=? AND file_hash<>?", (path, file_hash))
+    if cur.rowcount:
+        conn.execute("DELETE FROM files WHERE path=? AND file_hash<>?", (path, file_hash))
+    return cur.rowcount
 
 
 def run_job(conn, job_id: str, roots):
@@ -291,7 +364,17 @@ def run_job(conn, job_id: str, roots):
     else:
         seen = {r["file_hash"] for r in conn.execute(
             "SELECT file_hash FROM files WHERE status='ok'")}
-    done = failed = 0
+
+    # The same rule, applied to the embedding: a real run must not skip a file
+    # whose CLAP vector was synthesized under mock (or written before the column
+    # existed, which is the same lack of evidence). Without this, switching
+    # GOLDDIGGER_MOCK off and re-ingesting is a no-op and every distance stays
+    # fiction -- silently, because the job still reports every file done.
+    if not config.MOCK:
+        seen -= {r["file_hash"] for r in conn.execute(
+            "SELECT DISTINCT file_hash FROM chunks"
+            " WHERE synthetic IS NULL OR synthetic = 1")}
+    done = failed = relinked = dropped = 0
     # The message now names the file that just came back rather than the one
     # about to start: with a pool ahead of this loop there are several of those.
     for record in prepared(paths, seen, inline_essentia, config.INGEST_WORKERS):
@@ -301,6 +384,15 @@ def run_job(conn, job_id: str, roots):
             if record.get("error"):
                 raise RuntimeError(record["error"])
             fh = record["file_hash"]
+            # Before the dedupe decides: the rows for this content may name a
+            # path it has since moved away from, and the path may still carry
+            # rows from bytes that have since been replaced. Both are cheap
+            # statements against an index, and neither re-extracts anything.
+            moved = relink(conn, str(path), fh)
+            orphans = drop_stale(conn, str(path), fh)
+            relinked += moved
+            dropped += orphans
+
             # A skip still falls through to the progress write below: `continue`
             # here froze the bar at zero for any folder already ingested.
             if fh not in seen:                  # content-hash dedupe
@@ -342,9 +434,14 @@ def run_job(conn, job_id: str, roots):
             except Exception:
                 pass            # recorded by the standalone pass; never fails an ingest
 
+    # The message doubles as the finished job's footnote. Worth saying: from the
+    # progress bar alone, a library that was silently repaired and one that was
+    # skipped wholesale look identical.
+    repairs = ([f"{relinked} moved"] if relinked else []) + \
+              ([f"{dropped} stale chunks dropped"] if dropped else [])
     conn.execute(
-        "UPDATE jobs SET state='finished', message=NULL, finished_at=? WHERE job_id=?",
-        (dt.datetime.now(dt.UTC).isoformat(), job_id))
+        "UPDATE jobs SET state='finished', message=?, finished_at=? WHERE job_id=?",
+        (" · ".join(repairs) or None, dt.datetime.now(dt.UTC).isoformat(), job_id))
     conn.commit()
 
 
@@ -370,4 +467,5 @@ def load_corpus(conn):
         c.kconf[i] = r["key_confidence"] or 0.0
         c.roles[i] = r["role"]
         c.hashes[i] = r["file_hash"]
+        c.synthetic[i] = r["synthetic"] != 0 if r["synthetic"] is not None else True
     return c

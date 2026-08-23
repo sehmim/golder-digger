@@ -29,6 +29,20 @@ KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.
 KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
 PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
+# --- filename ---
+# The filename is evidence, not measurement, so it carries a certainty like
+# every other estimate here. An explicit unit ("126bpm") is a statement; a bare
+# number inferred from position is weaker but still far better than the nothing
+# beat tracking returns on a two-second loop.
+BPM_MIN, BPM_MAX = 40, 220
+FILENAME_BPM_EXPLICIT = 0.95
+FILENAME_BPM_BARE = 0.60
+FILENAME_KEY_QUALIFIED = 0.95   # "Cm", "F#Maj7" -- the mode is stated
+FILENAME_KEY_BARE = 0.55        # "G#", "_A_" -- a root, possibly a take letter
+# how many files a word must appear in before it counts as this library's
+# vocabulary rather than one file's catalogue number
+VOCAB_MIN_FILES = 5
+
 # --- fit ---
 FIT_FLOOR = 0.45
 FIT_FLOOR_MIN = 0.20

@@ -171,9 +171,10 @@ Things that are the way they are on purpose:
   wrongly punishes half- and double-time.
 - **Role compatibility floors at 0.25**, never 0 — a literal zero annihilates a
   geometric mean and would turn a preference into a hard filter.
-- **Novelty percentiles rank across the whole corpus**, not the Fit-passing
-  subset. The fit floor relaxes when the pool is sparse, which would otherwise
-  silently shift every novelty value for the same context.
+- **Novelty percentiles rank across the active candidate corpus**, not the
+  Fit-passing subset. Changing enabled folders can therefore change the percentile
+  represented by a knob position. The fit floor relaxes when the pool is sparse,
+  which would otherwise shift it again according to which candidates passed Fit.
 - **Selection is greedy (MMR).** The redundancy term compares against what's
   *already picked*, which is undefined in a one-shot top-K.
 - **Results never share a file with the context.** Otherwise DISTANCE 10 just

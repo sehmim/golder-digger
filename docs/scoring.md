@@ -57,11 +57,13 @@ scaled by `tonalness × TONALNESS_GAIN`. `tonalness` is normalized negative entr
 a flat chroma, approaching 1 for a peaked one. Without that second term, drums claim a
 confident key, and a sample library is mostly drums.
 
-## Novelty ranks across the whole corpus
+## Novelty ranks across the active candidate corpus
 
-`novelty_all()` percentile-ranks `1 − clap·ctx_clap` over **every** chunk, not over the
-Fit-passing subset. The fit floor relaxes when the pool is sparse (below), which would
-otherwise silently shift every novelty value for the same context.
+`novelty_all()` percentile-ranks `1 − clap·ctx_clap` over every chunk allowed by the
+active folder roots, not over the Fit-passing subset. The fit floor relaxes when the
+pool is sparse (below), which would otherwise silently shift every novelty value for
+the same context. Changing the active folders can therefore change the percentile
+represented by the same knob position.
 
 ## Selection is greedy MMR
 
@@ -92,3 +94,19 @@ touched it still reports `Root=0`/`Name=0` — indistinguishable from a delibera
 This fixes the *context* side only. `fit_all` takes `min(corpus.kconf, ctx.kconf)`, so a
 corpus of low-confidence one-shots keeps H pinned near `NEUTRAL` no matter how good the
 session metadata is.
+
+Both callers apply it now: `golddigger als --analyze`, and `POST /session/analyze` when
+given `session_path`.
+
+## The dial is only as real as the embedding
+
+Novelty is a percentile of CLAP distance, so under `GOLDDIGGER_MOCK=1` — where the CLAP
+vector is synthesized from the file hash — every notch is arithmetic over noise. The
+numbers still move monotonically, which is exactly why this needs saying out loud
+rather than being left to the reader.
+
+`chunks.synthetic` records which it was, per chunk, and `Corpus.synthetic` carries it
+into scoring; `/health` and `/session/analyze` report the count. Ingest uses the same
+column to decide what "already done" means: a real run re-does a file whose vectors
+were synthesized, because content-hash dedupe would otherwise skip it and leave the
+corpus fiction while reporting every file done.

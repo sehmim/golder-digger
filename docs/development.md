@@ -12,17 +12,22 @@ cd golders-desktop && npm install
 ## Running
 
 ```bash
-./start.sh              # both halves, mock features
+./start.sh              # both halves, real extractors
+./start.sh --mock       # both halves, synthesized features
 ./start.sh --restart    # same, but replace an API already on the port
 ./start.sh --backend    # API only, foreground
 ./start.sh --frontend   # Electron only
-./start.sh --real       # GOLDDIGGER_MOCK=0
+./start.sh --real       # explicit alias for the default
 ```
 
 `start.sh` starts the API first on purpose: the desktop app adopts a listening server
 rather than spawning its own, so this keeps both sets of logs together (API output goes
 to `.logs/api.log`) and turns the stale-server trap below into a printed warning. It
 only ever kills a process it can confirm is our uvicorn.
+
+The engine and CLI default to mock extraction, but the application launcher
+defaults to real extraction because the DISTANCE dial depends on measured CLAP
+vectors. Use `--mock` for fast UI development when ranking quality is irrelevant.
 
 Or run the halves by hand:
 
@@ -66,7 +71,8 @@ rhythm and role deterministically from the chunk id — same shapes and ranges a
 extractors, clustered so novelty percentiles are not uniform noise.
 
 Everything downstream is real. Build and test against mock; flip to `GOLDDIGGER_MOCK=0`
-only to exercise `features.py` itself.
+only to exercise `features.py` itself. This paragraph describes the engine default;
+the application `start.sh` deliberately defaults to `GOLDDIGGER_MOCK=0`.
 
 ## Traps
 
@@ -85,7 +91,8 @@ puts scratch rows in your library; clean up by `path` afterwards. The test suite
 — every fixture connects to a `tmp_path` database.
 
 **Two lockfiles.** `golders-desktop/` has both `package-lock.json` and `pnpm-lock.yaml`.
-The scripts are run with npm. Pick one before it causes a divergence.
+The current scripts use npm and `package-lock.json`; do not update the pnpm lockfile
+unless the project formally changes package managers.
 
 **The package name has one `d`.** `goldigger/`, but `golddigger` everywhere else. See
 `CLAUDE.md`.

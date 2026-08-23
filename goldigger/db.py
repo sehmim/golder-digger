@@ -24,10 +24,22 @@ CREATE TABLE IF NOT EXISTS chunks (
   tempo_confidence REAL,
   tonalness       REAL,
   spectral        TEXT,
-  tags            TEXT
+  tags            TEXT,
+  -- 1 when the CLAP vector was synthesized from the file hash (mock mode). NULL
+  -- on rows written before this column existed, which is not the same as 0: an
+  -- unknown vector is no more trustworthy than a synthetic one.
+  synthetic       INTEGER,
+  -- "audio" or "filename": which source the bpm/key above actually came from.
+  -- A tempo printed in a filename is a person's claim, not a measurement, and
+  -- the two are worth different amounts when they disagree.
+  bpm_source      TEXT,
+  key_source      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(file_hash);
 CREATE INDEX IF NOT EXISTS idx_chunks_role ON chunks(role);
+-- ingest asks "what does this path claim?" once per walked file, and resolve()
+-- matches a Live sample by exact path. Without this both are a full scan.
+CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
 
 CREATE TABLE IF NOT EXISTS files (
   file_hash   TEXT PRIMARY KEY,
@@ -140,6 +152,9 @@ MIGRATIONS = {
         "tonalness": "REAL",
         "spectral": "TEXT",
         "tags": "TEXT",
+        "synthetic": "INTEGER",
+        "bpm_source": "TEXT",
+        "key_source": "TEXT",
     },
 }
 

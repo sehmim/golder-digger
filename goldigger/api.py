@@ -2,18 +2,47 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 import os
 import json
+from pathlib import Path
+from threading import Lock
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
 from . import ableton, audition, config, db, essentia_runner, ingest, listening, scoring
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
+
+# A knob session revisits a very small set of queries. Keep those results in the
+# backend so every renderer gets the same behaviour and returning to a detent is
+# independent of UI lifetime. These are deliberately bounded runtime caches;
+# SQLite remains the durable source of truth.
+_ANALYSIS_CACHE_LIMIT = 32
+_ROOT_MASK_CACHE_LIMIT = 16
+_analysis_cache: OrderedDict[tuple, dict] = OrderedDict()
+_root_mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+_cache_lock = Lock()
+
+
+def _cache_get(cache: OrderedDict, key: tuple):
+    with _cache_lock:
+        value = cache.get(key)
+        if value is not None:
+            cache.move_to_end(key)
+        return value
+
+
+def _cache_put(cache: OrderedDict, key: tuple, value, limit: int):
+    with _cache_lock:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > limit:
+            cache.popitem(last=False)
 
 
 @app.on_event("startup")
@@ -57,6 +86,20 @@ class AnalyzeReq(BaseModel):
     distance: float = Field(50, ge=0, le=100,
                             description="target novelty percentile, not a threshold")
     k: int = Field(config.DEFAULT_K, ge=1, le=100)
+    session_path: str | None = Field(
+        None, description="the .als these chunks came from; anchors tempo and key")
+    active_roots: list[str] | None = Field(
+        None, description="candidate folders; null means the full legacy corpus")
+
+
+class FolderStatusReq(BaseModel):
+    roots: list[str]
+
+
+class LibraryFilesReq(BaseModel):
+    roots: list[str] | None = None
+    limit: int = Field(100, ge=1, le=250)
+    offset: int = Field(0, ge=0)
 
 
 class TagReq(BaseModel):
@@ -73,10 +116,24 @@ class EssentiaReq(BaseModel):
 
 # ---------------------------------------------------------------- routes
 
+@app.exception_handler(audition.ChunkOutsideAudio)
+def _chunk_outside_audio(request, exc: audition.ChunkOutsideAudio):
+    """410, not 500: the row is wrong about the file, and the fix is a re-ingest.
+
+    Raised from inside the render, so it is handled here rather than at each of
+    the two audio routes -- and the desktop shows the message instead of a bare
+    "500 could not render <chunk_id>".
+    """
+    return JSONResponse(status_code=410,
+                        content={"detail": f"{exc} -- re-ingest the folder to rebuild"
+                                           " its chunks"})
+
+
 @app.get("/health")
 def health():
     c = state["corpus"]
     return {"ok": True, "mock": config.MOCK, "chunks": len(c) if c else 0,
+            "synthetic_chunks": int(c.synthetic.sum()) if c else 0,
             "db": str(config.DB_PATH),
             # how ingest will characterise files, before anything is ingested
             "essentia": essentia_runner.runner_mode() if config.ESSENTIA_ON_INGEST else None}
@@ -173,16 +230,195 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
     return {"total": total, "count": len(rows), "chunks": rows}
 
 
+@app.post("/library/files")
+def library_files(req: LibraryFilesReq):
+    """Human-scale, file-level summaries for inspection tools.
+
+    The corpus is chunk-oriented. Group here so a developer window can paginate
+    files without copying every chunk through shared application state.
+    """
+    if req.roots == []:
+        return {"total": 0, "count": 0, "offset": req.offset, "files": []}
+
+    where = ""
+    args: list[str] = []
+    if req.roots is not None:
+        clauses = []
+        for root in req.roots:
+            normalized = str(Path(root).resolve(strict=False)).rstrip(os.sep)
+            escaped = (normalized.replace("\\", "\\\\")
+                       .replace("%", "\\%").replace("_", "\\_"))
+            clauses.append("(c.path = ? OR c.path LIKE ? ESCAPE '\\')")
+            args.extend((normalized, f"{escaped}{os.sep}%"))
+        where = f" WHERE {' OR '.join(clauses)}"
+
+    conn = _conn()
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM (SELECT 1 FROM chunks c{where} GROUP BY c.path, c.file_hash)",
+        args).fetchone()[0]
+    sql = f"""SELECT c.path, c.file_hash, f.duration, f.status, f.ingested_at,
+                     COUNT(*) AS chunks, AVG(c.bpm) AS bpm,
+                     GROUP_CONCAT(DISTINCT c.tonic_pc) AS tonic_pcs,
+                     GROUP_CONCAT(DISTINCT c.role) AS roles,
+                     MAX(COALESCE(c.synthetic, 1)) AS synthetic,
+                     MAX(CASE WHEN e.file_hash IS NULL THEN 0 ELSE 1 END) AS essentia
+              FROM chunks c
+              LEFT JOIN files f ON f.file_hash = c.file_hash
+              LEFT JOIN essentia e ON e.file_hash = c.file_hash
+              {where}
+              GROUP BY c.path, c.file_hash
+              ORDER BY c.path
+              LIMIT ? OFFSET ?"""
+    page = [dict(row) for row in conn.execute(sql, [*args, req.limit, req.offset])]
+    for row in page:
+        pcs = [int(value) for value in (row.pop("tonic_pcs") or "").split(",") if value]
+        row["keys"] = [config.PITCH_NAMES[pc] for pc in pcs if pc >= 0]
+        row["roles"] = [value for value in (row["roles"] or "").split(",") if value]
+        row["synthetic"] = bool(row["synthetic"])
+        row["essentia"] = bool(row["essentia"])
+        row["bpm"] = round(row["bpm"], 1) if row["bpm"] is not None else None
+
+    return {"total": total, "count": len(page), "offset": req.offset, "files": page}
+
+
+def _under_root(path: str, root: str) -> bool:
+    """Path-aware containment: `/samples/a` must not match `/samples/able`."""
+    try:
+        Path(path).resolve(strict=False).relative_to(Path(root).resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
+def _normalized_roots(roots: list[str]) -> tuple[str, ...]:
+    """Canonicalize a root set without touching the filesystem.
+
+    Root order and duplicates cannot change a candidate set, so they must not
+    create separate cache entries. Avoiding ``Path.resolve`` here is also
+    important: a large corpus may live on slow or disconnected volumes.
+    """
+    return tuple(sorted({
+        os.path.normcase(os.path.abspath(os.path.expanduser(root)))
+        for root in roots
+    }))
+
+
+def _under_normalized_root(path: str, root: str) -> bool:
+    return path == root or path.startswith(root if root.endswith(os.sep) else root + os.sep)
+
+
+def _root_mask(corpus: scoring.Corpus, roots: list[str] | None) -> np.ndarray | None:
+    if roots is None:
+        return None
+    normalized_roots = _normalized_roots(roots)
+    key = (corpus.cache_token, normalized_roots)
+    cached = _cache_get(_root_mask_cache, key)
+    if cached is not None:
+        return cached
+
+    mask = np.array([
+        any(_under_normalized_root(path, root) for root in normalized_roots)
+        for path in (
+            os.path.normcase(os.path.abspath(os.path.expanduser(row["path"])))
+            for row in corpus.rows
+        )
+    ], dtype=bool)
+    mask.setflags(write=False)
+    _cache_put(_root_mask_cache, key, mask, _ROOT_MASK_CACHE_LIMIT)
+    return mask
+
+
+@app.post("/folders/status")
+def folder_status(req: FolderStatusReq):
+    corpus = state["corpus"]
+    rows = corpus.rows if corpus is not None else []
+    return {
+        "folders": [
+            {
+                "root": root,
+                "chunks": sum(_under_root(row["path"], root) for row in rows),
+            }
+            for root in req.roots
+        ]
+    }
+
+
+def _load_als_cached(path: str) -> dict:
+    """The set behind the dial, reparsed only when the file changes.
+
+    A knob sweep asks for the same set several times a second and a large project
+    is tens of milliseconds of XML each time. One entry is enough: the app digs
+    against one set at a time.
+    """
+    if not os.path.isfile(path):
+        raise HTTPException(404, f"no such file: {path}")
+    stamp = (path, os.path.getmtime(path))
+    if state.get("als_stamp") != stamp:
+        try:
+            state["als"] = ableton.load_als(path)
+        except ableton.UnreadableSet as exc:
+            raise HTTPException(400, str(exc))
+        state["als_stamp"] = stamp
+    return state["als"]
+
+
+def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
+    """Everything that can alter a completed ranking.
+
+    Corpus identity changes whenever ingestion or a manual tag reloads it. The
+    project stamp invalidates a ranking when the saved Live set changes. Keep
+    context order because it is part of the request's exact semantics.
+    """
+    session_stamp = None
+    if req.session_path:
+        if not os.path.isfile(req.session_path):
+            raise HTTPException(404, f"no such file: {req.session_path}")
+        session_stamp = (os.path.abspath(req.session_path), os.path.getmtime(req.session_path))
+    roots = None if req.active_roots is None else _normalized_roots(req.active_roots)
+    return (
+        corpus.cache_token, tuple(req.context_ids), float(req.distance), req.k,
+        session_stamp, roots,
+    )
+
+
 @app.post("/session/analyze")
 def analyze(req: AnalyzeReq):
     corpus = _corpus()
+    cache_key = _analysis_cache_key(corpus, req)
+    cached = _cache_get(_analysis_cache, cache_key)
+    if cached is not None:
+        return cached
+
+    allowed = _root_mask(corpus, req.active_roots)
     try:
         ctx = scoring.build_context(corpus, req.context_ids)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    results, floor = scoring.select(corpus, ctx, req.distance, req.k)
-    return {"distance": req.distance, "fit_floor": round(floor, 3),
-            "corpus_size": len(corpus), "count": len(results), "results": results}
+
+    # What Live states outright beats what the resolved chunks imply: a set at
+    # 174 whose only matched samples are two 87 BPM one-shots is still at 174,
+    # and inferring the context from that accident is how Fit's rhythm term ends
+    # up scoring against the wrong tempo.
+    applied = ableton.apply_session_context(
+        ctx, _load_als_cached(req.session_path)) if req.session_path else []
+
+    results, floor = scoring.select(corpus, ctx, req.distance, req.k, allowed)
+    candidate_count = int(allowed.sum()) if allowed is not None else len(corpus)
+    candidate_synthetic = corpus.synthetic[allowed] if allowed is not None else corpus.synthetic
+    response = {"distance": req.distance, "fit_floor": round(floor, 3),
+                "corpus_size": candidate_count, "count": len(results), "results": results,
+                "session_context": applied,
+                "context": {"bpm": ctx["bpm"],
+                            "tonic": (config.PITCH_NAMES[ctx["tonic"]]
+                                      if ctx["tonic"] >= 0 else None),
+                            "roles": sorted(ctx["roles"])},
+                # Read off the corpus, not off config.MOCK: what matters is how the
+                # rows being ranked were written, and a library ingested under mock
+                # stays fiction long after the flag is turned off.
+                "synthetic_novelty": bool(candidate_synthetic.any()),
+                "synthetic_chunks": int(candidate_synthetic.sum())}
+    _cache_put(_analysis_cache, cache_key, response, _ANALYSIS_CACHE_LIMIT)
+    return response
 
 
 def _session_key(als: dict) -> str | None:
@@ -315,6 +551,13 @@ def _chunk_row(chunk_id: str):
         (chunk_id,)).fetchone()
     if not row:
         raise HTTPException(404, f"no such chunk: {chunk_id}")
+    # A row can outlive its file: a folder moved while its drive was unmounted,
+    # or a delete no walk has passed over since. Named here because the loader
+    # raising through the handler reaches the desktop as a bare "500 Internal
+    # Server Error", which says nothing about which file or why.
+    if not os.path.isfile(row["path"]):
+        raise HTTPException(410, f"the file this chunk came from is gone: {row['path']}"
+                                 " -- re-ingest the folder to relink it")
     return row
 
 

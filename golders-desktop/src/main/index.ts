@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { OpenDialogOptions } from 'electron'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import * as api from './api'
 
@@ -7,6 +8,38 @@ import * as api from './api'
 const POLL_MS = 400
 
 const pollers = new Map<string, ReturnType<typeof setInterval>>()
+let settingsWrite = Promise.resolve()
+let primaryWindow: BrowserWindow | null = null
+let devWindow: BrowserWindow | null = null
+let devSnapshot: unknown = null
+
+function settingsPath(): string {
+  return join(app.getPath('userData'), 'settings.json')
+}
+
+async function loadSettings(): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(settingsPath(), 'utf8'))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    if (error instanceof SyntaxError) {
+      console.error(`Ignoring malformed settings file at ${settingsPath()}`, error)
+      return null
+    }
+    throw error
+  }
+}
+
+function saveSettings(settings: unknown): Promise<void> {
+  settingsWrite = settingsWrite.catch(() => undefined).then(async () => {
+    const destination = settingsPath()
+    const temporary = `${destination}.tmp`
+    await mkdir(app.getPath('userData'), { recursive: true })
+    await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, 'utf8')
+    await rename(temporary, destination)
+  })
+  return settingsWrite
+}
 
 function broadcast(channel: string, payload: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -40,6 +73,77 @@ function watchJob(jobId: string): void {
   pollers.set(jobId, timer)
 }
 
+function loadRenderer(window: BrowserWindow, target?: 'dev'): void {
+  if (process.env.ELECTRON_RENDERER_URL) {
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    if (target) url.searchParams.set('window', target)
+    void window.loadURL(url.toString())
+  } else {
+    void window.loadFile(join(__dirname, '../renderer/index.html'), {
+      query: target ? { window: target } : undefined
+    })
+  }
+}
+
+function openSettings(): void {
+  if (!primaryWindow || primaryWindow.isDestroyed()) return
+  if (primaryWindow.isMinimized()) primaryWindow.restore()
+  primaryWindow.show()
+  primaryWindow.focus()
+  primaryWindow.webContents.send('settings:open')
+}
+
+function attachInterfaceShortcuts(window: BrowserWindow): void {
+  window.webContents.on('before-input-event', (event, input) => {
+    const isInterfaceShortcut =
+      input.type === 'keyDown' &&
+      input.meta &&
+      input.alt &&
+      !input.control &&
+      !input.shift &&
+      !input.isAutoRepeat
+
+    if (isInterfaceShortcut && input.code === 'KeyD') {
+      event.preventDefault()
+      openDevWindow()
+    }
+
+    if (isInterfaceShortcut && input.code === 'KeyS') {
+      event.preventDefault()
+      openSettings()
+    }
+  })
+}
+
+function openDevWindow(): void {
+  if (devWindow && !devWindow.isDestroyed()) {
+    if (devWindow.isMinimized()) devWindow.restore()
+    devWindow.show()
+    devWindow.focus()
+    return
+  }
+
+  devWindow = new BrowserWindow({
+    width: 980,
+    height: 760,
+    minWidth: 900,
+    minHeight: 600,
+    backgroundColor: '#eceee8',
+    title: 'Gold Digger Dev',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true
+    }
+  })
+  devWindow.on('closed', () => {
+    devWindow = null
+  })
+  attachInterfaceShortcuts(devWindow)
+  loadRenderer(devWindow, 'dev')
+}
+
 function createWindow(): void {
   const window = new BrowserWindow({
     width: 1180,
@@ -60,11 +164,14 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    void window.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  primaryWindow = window
+  attachInterfaceShortcuts(window)
+  window.on('closed', () => {
+    primaryWindow = null
+    devSnapshot = null
+    if (devWindow && !devWindow.isDestroyed()) devWindow.close()
+  })
+  loadRenderer(window)
 }
 
 app.whenReady().then(() => {
@@ -98,6 +205,30 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('api:status', () => api.status())
+  ipcMain.handle('dev:open', () => openDevWindow())
+  ipcMain.handle('dev:snapshot:get', () => devSnapshot)
+  ipcMain.on('dev:snapshot:publish', (event, snapshot: unknown) => {
+    if (primaryWindow?.webContents !== event.sender) return
+    devSnapshot = snapshot
+    if (devWindow && !devWindow.isDestroyed()) {
+      devWindow.webContents.send('dev:snapshot', snapshot)
+    }
+  })
+  ipcMain.handle('folders:status', (_event, roots: string[]) => api.folderStatus(roots))
+  ipcMain.handle(
+    'dev:analysis-files',
+    (_event, roots: string[] | null, limit: number, offset: number) =>
+      api.analysisFiles(roots, limit, offset)
+  )
+  ipcMain.handle('settings:load', () => loadSettings())
+  ipcMain.handle('settings:save', (_event, settings: unknown) => saveSettings(settings))
+  ipcMain.handle('path:exists', async (_event, path: string) => {
+    try {
+      return (await stat(path)).isDirectory()
+    } catch {
+      return false
+    }
+  })
 
   ipcMain.handle('ingest:start', async (_event, roots: string[]) => {
     const { job_id } = await api.startIngest(roots)
@@ -122,8 +253,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'session:analyze',
-    (_event, contextIds: string[], distance: number, k: number) =>
-      api.analyze(contextIds, distance, k)
+    (
+      _event,
+      contextIds: string[],
+      distance: number,
+      k: number,
+      sessionPath: string | null,
+      activeRoots: string[] | null | undefined
+    ) => api.analyze(contextIds, distance, k, sessionPath, activeRoots)
   )
 
   createWindow()
