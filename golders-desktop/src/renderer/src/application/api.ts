@@ -35,12 +35,57 @@ export interface EssentiaSummary {
   no_key: number
 }
 
+/** One of the five scoring postures served by GET /presets, safest first. */
+export interface Preset {
+  key: string
+  name: string
+  /** Target novelty percentile. */
+  distance: number
+  /** Minimum Fit a candidate needs to be considered at all. */
+  fit_floor: number
+  /** How tightly the novelty target is held. */
+  bandwidth: number
+  /** Penalty for resembling something already picked. */
+  redundancy: number
+  role_mode: 'strict' | 'normal' | 'loose' | 'off'
+  blurb: string
+  /** The honest paragraph, including what this preset gives up. */
+  notes: string
+}
+
+export interface PresetList {
+  presets: Preset[]
+  default: Preset
+  role_modes: Record<string, { same: number; pair: number; unknown: number }>
+  fit_floor_min: number
+}
+
+/** Whether the corpus can support the scoring at all. */
+export interface CorpusStats {
+  chunks: number
+  files: number
+  /** measured = a real CLAP vector; unknown predates the column and is untrusted. */
+  provenance: { measured: number; synthetic: number; unknown: number }
+  key: {
+    strong: number
+    absent: number
+    mean_confidence: number
+    histogram: { from: number; to: number; count: number }[]
+  }
+  tempo: { with_bpm: number; histogram: { label: string; count: number }[] }
+  roles: {
+    unassigned: number
+    breakdown: { role: string | null; source: string | null; count: number }[]
+  }
+  essentia: EssentiaSummary
+}
+
 /** One <SampleRef> from a Live set, after resolution against the corpus. */
 export interface SessionSample {
   name: string
   candidates: string[]
-  /** How the file was found. Present on matched samples only. */
-  method?: 'hash' | 'path' | 'basename'
+  /** How the file was found. Present on matched samples only. Weakest last. */
+  method?: 'hash' | 'path' | 'basename' | 'basename+size'
   resolved_path?: string
   chunk_ids?: string[]
   chunks?: number
@@ -86,6 +131,14 @@ export interface AnalyzeResult {
   synthetic_novelty: boolean
   /** How many of `corpus_size` those are — the dial is skewed in proportion. */
   synthetic_chunks: number
+  /** Which posture scored this, and the numbers it actually used. */
+  preset: string
+  fit_floor_requested: number
+  /** True when the pool was too thin and the gate opened below the preset's floor. */
+  fit_floor_relaxed: boolean
+  bandwidth: number
+  redundancy: number
+  role_mode: string
 }
 
 export interface SessionSet {

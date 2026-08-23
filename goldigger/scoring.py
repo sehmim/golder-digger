@@ -4,6 +4,13 @@ greedy MMR selection against a target novelty band.
 Fit and Novelty are deliberately separate: "works with" and "sounds like" are
 different constructs, and collapsing them into one weighted distance is what the
 DISTANCE dial exists to avoid.
+
+Every per-candidate term here is computed over the whole corpus at once. The
+readable scalar forms (`cof_proximity`, `tempo_score`, `role_compat`) are kept
+because they are what the tests assert against and what a reader should look at
+first, but the scoring path calls the array forms beside them: at 100k chunks the
+four Python comprehensions this replaced were the entire cost of a rank, while
+the 512-wide matmul they surrounded was microseconds.
 """
 from __future__ import annotations
 
@@ -11,7 +18,7 @@ import json
 
 import numpy as np
 
-from . import config
+from . import config, presets
 
 
 # ---------------------------------------------------------------- corpus
@@ -43,6 +50,44 @@ class Corpus:
         return len(self.rows)
 
 
+# The two derived encodings below are functions rather than methods, and cache
+# onto whatever object they are handed. A "corpus" here is a structural type --
+# the baseline and listening tests pass their own stand-ins -- and a method would
+# quietly make Corpus the only thing that can be scored.
+
+def role_codes(corpus) -> tuple[list, np.ndarray]:
+    """(distinct roles, per-chunk index into it).
+
+    A corpus of any size holds at most eight distinct roles, so the role term
+    becomes eight lookups and one fancy-index rather than a call per chunk.
+    """
+    cached = getattr(corpus, "_role_codes", None)
+    if cached is None:
+        distinct = sorted({r for r in corpus.roles if r is not None}, key=str)
+        order = {r: i for i, r in enumerate(distinct)}
+        # None takes the trailing slot: "no role recorded" is its own case in
+        # role_compat, not a role that happens to match nothing
+        codes = np.fromiter((order.get(r, len(distinct)) for r in corpus.roles),
+                            dtype=np.int32, count=len(corpus.roles))
+        cached = (distinct, codes)
+        corpus._role_codes = cached
+    return cached
+
+
+def hash_codes(corpus) -> tuple[dict, np.ndarray]:
+    """(file_hash -> code, per-chunk code). Turns the same-file exclusion from a
+    string `in` per chunk into one np.isin."""
+    cached = getattr(corpus, "_hash_codes", None)
+    if cached is None:
+        order: dict = {}
+        codes = np.empty(len(corpus.hashes), dtype=np.int32)
+        for i, h in enumerate(corpus.hashes):
+            codes[i] = order.setdefault(h, len(order))
+        cached = (order, codes)
+        corpus._hash_codes = cached
+    return cached
+
+
 # ---------------------------------------------------------------- helpers
 
 def cof_proximity(a: int, b: int) -> float:
@@ -53,20 +98,42 @@ def cof_proximity(a: int, b: int) -> float:
     return 1.0 - min(d, 12 - d) / 6.0
 
 
-def role_compat(candidate: str | None, context_roles: set[str]) -> float:
+def cof_proximity_all(tonics: np.ndarray, b: int) -> np.ndarray:
+    """cof_proximity over a whole corpus at once."""
+    t = np.asarray(tonics, dtype=np.int32)
+    d = ((t * 7) - (b * 7)) % 12
+    cof = 1.0 - np.minimum(d, 12 - d) / 6.0
+    # a missing tonic on either side is absence of evidence, not a tritone
+    return np.where((t < 0) | (b < 0), config.NEUTRAL, cof)
+
+
+def role_compat(candidate: str | None, context_roles: set[str],
+                mode: str = "normal") -> float:
     """Complement beats duplication -- this is a layering tool, not a search box.
 
-    Floored at ROLE_SAME rather than 0: a literal zero annihilates the geometric
-    mean and would make role a hard filter instead of a preference.
+    Floored above 0 rather than at it: a literal zero annihilates the geometric
+    mean and would make role a hard filter instead of a preference. `mode` picks
+    how hard the preference argues -- see config.ROLE_MODES.
     """
+    w = config.ROLE_MODES[mode]
     if not candidate or not context_roles:
-        return config.NEUTRAL
+        return w["unknown"]
     if candidate in context_roles:
-        return config.ROLE_SAME
+        return w["same"]
     for other in context_roles:
         if frozenset((candidate, other)) in config.NEUTRAL_ROLE_PAIRS:
-            return config.NEUTRAL
+            return w["pair"]
     return 1.0
+
+
+def role_compat_all(corpus: "Corpus", context_roles: set[str],
+                    mode: str = "normal") -> np.ndarray:
+    """role_compat over a whole corpus, via the eight-entry lookup table."""
+    distinct, codes = role_codes(corpus)
+    # the trailing entry is the None case, which role_compat already answers
+    lut = np.array([role_compat(r, context_roles, mode) for r in distinct]
+                   + [role_compat(None, context_roles, mode)])
+    return lut[codes]
 
 
 def tempo_score(bpm_x, bpm_ctx) -> float:
@@ -75,6 +142,20 @@ def tempo_score(bpm_x, bpm_ctx) -> float:
         return config.NEUTRAL
     d = min(abs(np.log2((bpm_x * r) / bpm_ctx)) for r in config.TEMPO_RATIOS)
     return float(np.exp(-d / config.TEMPO_TOL))
+
+
+def tempo_score_all(bpms: np.ndarray, bpm_ctx) -> np.ndarray:
+    """tempo_score over a whole corpus at once."""
+    x = np.asarray(bpms, dtype=np.float64)
+    if not bpm_ctx or np.isnan(bpm_ctx):
+        return np.full(len(x), config.NEUTRAL)
+    usable = np.isfinite(x) & (x > 0)
+    # log2 of a zero or NaN tempo warns and yields -inf; both are masked back to
+    # NEUTRAL below, so the arithmetic is allowed to produce them quietly
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = np.asarray(config.TEMPO_RATIOS, dtype=np.float64)
+        d = np.abs(np.log2(np.outer(x, ratios) / bpm_ctx)).min(axis=1)
+    return np.where(usable, np.exp(-d / config.TEMPO_TOL), config.NEUTRAL)
 
 
 # ---------------------------------------------------------------- context
@@ -105,21 +186,22 @@ def build_context(corpus: Corpus, chunk_ids: list[str]) -> dict:
 
 # ---------------------------------------------------------------- fit
 
-def fit_all(corpus: Corpus, ctx: dict) -> dict[str, np.ndarray]:
-    n = len(corpus)
+def fit_all(corpus: Corpus, ctx: dict, preset: presets.Preset | None = None
+            ) -> dict[str, np.ndarray]:
+    preset = preset or presets.DEFAULT
     cn = corpus.chroma / (np.linalg.norm(corpus.chroma, axis=1, keepdims=True) + 1e-9)
     qn = ctx["chroma"] / (np.linalg.norm(ctx["chroma"]) + 1e-9)
     chroma_sim = np.clip(cn @ qn, 0.0, 1.0)
 
-    cof = np.array([cof_proximity(int(t), ctx["tonic"]) for t in corpus.tonic])
+    cof = cof_proximity_all(corpus.tonic, ctx["tonic"])
     raw = config.W_CHROMA * chroma_sim + config.W_COF * cof
 
     # soft evidence: an unconfident key estimate must not hard-exclude anything
     c = np.minimum(corpus.kconf, ctx["kconf"])
     H = c * raw + (1.0 - c) * config.NEUTRAL
 
-    R = np.array([tempo_score(b, ctx["bpm"]) for b in corpus.bpm])
-    P = np.array([role_compat(r, ctx["roles"]) for r in corpus.roles])
+    R = tempo_score_all(corpus.bpm, ctx["bpm"])
+    P = role_compat_all(corpus, ctx["roles"], preset.role_mode)
 
     eps = 1e-3
     # geometric mean: one catastrophic component cannot be masked by two good ones
@@ -146,23 +228,36 @@ def novelty_all(corpus: Corpus, ctx: dict, allowed: np.ndarray | None = None) ->
 
 # ---------------------------------------------------------------- select
 
-def select(corpus: Corpus, ctx: dict, distance: float, k: int = config.DEFAULT_K,
-           allowed: np.ndarray | None = None):
+def same_file_mask(corpus: Corpus, ctx: dict) -> np.ndarray:
+    """True for every chunk cut from a file the context already uses."""
+    order, codes = hash_codes(corpus)
+    ctx_codes = [order[h] for h in ctx["hashes"] if h in order]
+    return np.isin(codes, ctx_codes)
+
+
+def select(corpus: Corpus, ctx: dict, distance: float | None = None,
+           k: int = config.DEFAULT_K, allowed: np.ndarray | None = None,
+           preset: presets.Preset | None = None):
     """Greedy MMR against a target novelty band.
 
     Greedy because the redundancy term compares against what is *already picked* --
     undefined in a one-shot top-K.
+
+    `preset` supplies the floor, band width, redundancy penalty and role mode.
+    `distance` still overrides the preset's own position, because the dial keeps
+    moving after a preset is chosen -- passing neither uses the preset's.
     """
-    scores = fit_all(corpus, ctx)
+    preset = preset or presets.DEFAULT
+    scores = fit_all(corpus, ctx, preset)
     allowed = np.ones(len(corpus), dtype=bool) if allowed is None else allowed
     fit, nov = scores["fit"], novelty_all(corpus, ctx, allowed)
-    q = np.clip(distance / 100.0, 0.0, 1.0)
+    q = np.clip((preset.distance if distance is None else distance) / 100.0, 0.0, 1.0)
 
     # never return the context's own file: otherwise DISTANCE 10 just hands back
     # the neighbouring bars of the clip you already have
-    same_file = np.array([h in ctx["hashes"] for h in corpus.hashes])
+    same_file = same_file_mask(corpus, ctx)
 
-    floor = config.FIT_FLOOR
+    floor = preset.fit_floor
     while True:
         pool = np.where((fit >= floor) & ~same_file & allowed)[0]
         if len(pool) >= 3 * k or floor <= config.FIT_FLOOR_MIN:
@@ -171,12 +266,12 @@ def select(corpus: Corpus, ctx: dict, distance: float, k: int = config.DEFAULT_K
 
     picked: list[int] = []
     while len(picked) < k and len(pool):
-        band = -np.abs(nov[pool] - q) / config.BANDWIDTH
+        band = -np.abs(nov[pool] - q) / preset.bandwidth
         if picked:
             red = (corpus.clap[pool] @ corpus.clap[picked].T).max(axis=1)
         else:
             red = np.zeros(len(pool))
-        best = pool[int(np.argmax(band - config.REDUNDANCY * red))]
+        best = pool[int(np.argmax(band - preset.redundancy * red))]
         picked.append(best)
         pool = pool[pool != best]
 

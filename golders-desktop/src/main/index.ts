@@ -246,6 +246,8 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('essentia:summary', () => api.essentiaSummary())
+  ipcMain.handle('dev:presets', () => api.presets())
+  ipcMain.handle('dev:corpus-stats', () => api.corpusStats())
 
   ipcMain.handle('chunk:audio', (_event, chunkId: string, options: api.AuditionOptions) =>
     api.chunkAudio(chunkId, options)
@@ -256,11 +258,12 @@ app.whenReady().then(() => {
     (
       _event,
       contextIds: string[],
-      distance: number,
+      distance: number | null,
       k: number,
       sessionPath: string | null,
-      activeRoots: string[] | null | undefined
-    ) => api.analyze(contextIds, distance, k, sessionPath, activeRoots)
+      activeRoots: string[] | null | undefined,
+      preset: string | null | undefined
+    ) => api.analyze(contextIds, distance, k, sessionPath, activeRoots, preset)
   )
 
   createWindow()

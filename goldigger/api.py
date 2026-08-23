@@ -13,7 +13,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
-from . import ableton, audition, config, db, essentia_runner, ingest, listening, scoring
+from . import (ableton, audition, config, db, essentia_runner, ingest, listening,
+               presets, scoring)
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -83,8 +84,12 @@ class IngestReq(BaseModel):
 
 class AnalyzeReq(BaseModel):
     context_ids: list[str]
-    distance: float = Field(50, ge=0, le=100,
-                            description="target novelty percentile, not a threshold")
+    distance: float | None = Field(
+        None, ge=0, le=100,
+        description="target novelty percentile, not a threshold;"
+                    " null means the preset's own position")
+    preset: str | None = Field(
+        None, description="one of GET /presets; null scores with the config defaults")
     k: int = Field(config.DEFAULT_K, ge=1, le=100)
     session_path: str | None = Field(
         None, description="the .als these chunks came from; anchors tempo and key")
@@ -134,6 +139,11 @@ def health():
     c = state["corpus"]
     return {"ok": True, "mock": config.MOCK, "chunks": len(c) if c else 0,
             "synthetic_chunks": int(c.synthetic.sum()) if c else 0,
+            # Pins a build that has /presets and /corpus/stats. src/main/api.ts
+            # refuses to adopt an already-listening server without this field,
+            # which is the only thing standing between a stale `golddigger serve`
+            # and a UI that 404s every route added since it started.
+            "presets": [p.key for p in presets.PRESETS],
             "db": str(config.DB_PATH),
             # how ingest will characterise files, before anything is ingested
             "essentia": essentia_runner.runner_mode() if config.ESSENTIA_ON_INGEST else None}
@@ -204,6 +214,84 @@ def essentia_summary():
         "agree": counts.get(1, 0),
         "disagree": counts.get(0, 0),
         "no_key": counts.get(None, 0),
+    }
+
+
+@app.get("/presets")
+def list_presets():
+    """The five postures, safest first, with the copy that explains them.
+
+    Served rather than duplicated in the renderer so the numbers the UI displays
+    are provably the numbers the engine scored with.
+    """
+    return {"presets": [p.as_dict() for p in presets.PRESETS],
+            "default": presets.DEFAULT.as_dict(),
+            "role_modes": config.ROLE_MODES,
+            "fit_floor_min": config.FIT_FLOOR_MIN}
+
+
+@app.get("/corpus/stats")
+def corpus_stats():
+    """Whether the corpus can support the scoring at all, in one payload.
+
+    Every number here answers a question the Fit/Novelty design raises and that
+    a paginated file list cannot: how much of the library carries a *measured*
+    embedding, how much of it has key evidence strong enough for H to be
+    anything other than NEUTRAL, and how many chunks the role term has nothing
+    to say about. A UI that shows only totals will report a healthy library that
+    the engine cannot discriminate within.
+    """
+    conn = _conn()
+    row = conn.execute("""
+        SELECT COUNT(*)                                             AS chunks,
+               COUNT(DISTINCT file_hash)                            AS files,
+               SUM(synthetic = 0)                                   AS measured,
+               SUM(synthetic = 1)                                   AS synthetic,
+               SUM(synthetic IS NULL)                               AS unknown,
+               SUM(bpm IS NOT NULL)                                 AS with_bpm,
+               SUM(role IS NULL)                                    AS no_role,
+               SUM(COALESCE(key_confidence, 0) >= 0.30)             AS key_strong,
+               SUM(COALESCE(key_confidence, 0) <  0.05)             AS key_absent,
+               AVG(COALESCE(key_confidence, 0))                     AS key_mean
+        FROM chunks""").fetchone()
+
+    # Buckets, not a mean: the distribution is what says whether harmony is doing
+    # work. A library split between confident pads and silent drums averages to
+    # a number that describes neither.
+    edges = [0.0, 0.05, 0.15, 0.30, 0.60, 1.01]
+    key_hist = [
+        {"from": lo, "to": hi,
+         "count": conn.execute(
+             "SELECT COUNT(*) FROM chunks WHERE COALESCE(key_confidence,0) >= ?"
+             " AND COALESCE(key_confidence,0) < ?", (lo, hi)).fetchone()[0]}
+        for lo, hi in zip(edges, edges[1:])]
+
+    roles = [{"role": r["role"], "source": r["role_source"], "count": r["c"]}
+             for r in conn.execute(
+                 "SELECT role, role_source, COUNT(*) c FROM chunks"
+                 " GROUP BY role, role_source ORDER BY c DESC")]
+
+    tempo = [{"label": lab, "count": conn.execute(
+                  "SELECT COUNT(*) FROM chunks WHERE bpm IS NOT NULL"
+                  " AND bpm >= ? AND bpm < ?", (lo, hi)).fetchone()[0]}
+             for lab, lo, hi in (("<90", 0, 90), ("90-110", 90, 110),
+                                 ("110-130", 110, 130), ("130-150", 130, 150),
+                                 (">=150", 150, 1e6))]
+    tempo.append({"label": "none",
+                  "count": conn.execute(
+                      "SELECT COUNT(*) FROM chunks WHERE bpm IS NULL").fetchone()[0]})
+
+    return {
+        "chunks": row["chunks"], "files": row["files"],
+        "provenance": {"measured": row["measured"] or 0,
+                       "synthetic": row["synthetic"] or 0,
+                       "unknown": row["unknown"] or 0},
+        "key": {"strong": row["key_strong"] or 0, "absent": row["key_absent"] or 0,
+                "mean_confidence": round(row["key_mean"] or 0.0, 4),
+                "histogram": key_hist},
+        "tempo": {"with_bpm": row["with_bpm"] or 0, "histogram": tempo},
+        "roles": {"unassigned": row["no_role"] or 0, "breakdown": roles},
+        "essentia": essentia_summary(),
     }
 
 
@@ -376,7 +464,8 @@ def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
         session_stamp = (os.path.abspath(req.session_path), os.path.getmtime(req.session_path))
     roots = None if req.active_roots is None else _normalized_roots(req.active_roots)
     return (
-        corpus.cache_token, tuple(req.context_ids), float(req.distance), req.k,
+        corpus.cache_token, tuple(req.context_ids),
+        None if req.distance is None else float(req.distance), req.preset, req.k,
         session_stamp, roots,
     )
 
@@ -402,10 +491,25 @@ def analyze(req: AnalyzeReq):
     applied = ableton.apply_session_context(
         ctx, _load_als_cached(req.session_path)) if req.session_path else []
 
-    results, floor = scoring.select(corpus, ctx, req.distance, req.k, allowed)
+    try:
+        preset = presets.get(req.preset)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    results, floor = scoring.select(corpus, ctx, req.distance, req.k, allowed, preset)
     candidate_count = int(allowed.sum()) if allowed is not None else len(corpus)
     candidate_synthetic = corpus.synthetic[allowed] if allowed is not None else corpus.synthetic
-    response = {"distance": req.distance, "fit_floor": round(floor, 3),
+    distance = preset.distance if req.distance is None else req.distance
+    response = {"distance": distance, "fit_floor": round(floor, 3),
+                "preset": preset.key,
+                # `fit_floor` above is what the gate *ended up* at. A UI that only
+                # shows the preset's own number cannot tell a preset that held from
+                # one whose pool was too thin and quietly relaxed.
+                "fit_floor_requested": preset.fit_floor,
+                "fit_floor_relaxed": floor < preset.fit_floor,
+                "bandwidth": preset.bandwidth,
+                "redundancy": preset.redundancy,
+                "role_mode": preset.role_mode,
                 "corpus_size": candidate_count, "count": len(results), "results": results,
                 "session_context": applied,
                 "context": {"bpm": ctx["bpm"],
@@ -500,12 +604,10 @@ def session_als(req: AlsReq):
     from the corpus -- those are exactly the roots to feed back into POST /ingest.
     """
     conn = _conn()
-    if not os.path.isfile(req.path):
-        raise HTTPException(404, f"no such file: {req.path}")
-    try:
-        als = ableton.load_als(req.path)
-    except ableton.UnreadableSet as exc:
-        raise HTTPException(400, str(exc))
+    # Same one-entry cache the ranking path uses: opening a set and then digging
+    # against it reparsed the same XML twice, and reopening it after a knob
+    # session reparsed it again.
+    als = _load_als_cached(req.path)
 
     res = ableton.resolve(conn, als)
 

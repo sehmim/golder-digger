@@ -115,6 +115,14 @@ export interface AnalyzeResult {
   synthetic_novelty: boolean
   /** How many of `corpus_size` those are — the dial is skewed in proportion. */
   synthetic_chunks: number
+  /** Which posture scored this, and the numbers it actually used. */
+  preset: string
+  fit_floor_requested: number
+  /** True when the pool was too thin and the gate had to open below the preset's floor. */
+  fit_floor_relaxed: boolean
+  bandwidth: number
+  redundancy: number
+  role_mode: string
 }
 
 export interface SessionSet {
@@ -155,7 +163,7 @@ function pythonBin(): string {
  * over from an earlier session gets used silently and then 404s every route
  * added since it started. Checking one field turns that into a message.
  */
-const HEALTH_MARKER = 'synthetic_chunks'
+const HEALTH_MARKER = 'presets'
 
 async function healthBody(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
   try {
@@ -283,6 +291,53 @@ export function folderStatus(roots: string[]): Promise<{ folders: { root: string
   return request('/folders/status', { method: 'POST', body: JSON.stringify({ roots }) })
 }
 
+/** One of the five scoring postures served by GET /presets. */
+export interface Preset {
+  key: string
+  name: string
+  distance: number
+  fit_floor: number
+  bandwidth: number
+  redundancy: number
+  role_mode: 'strict' | 'normal' | 'loose' | 'off'
+  blurb: string
+  notes: string
+}
+
+export interface PresetList {
+  presets: Preset[]
+  default: Preset
+  role_modes: Record<string, { same: number; pair: number; unknown: number }>
+  fit_floor_min: number
+}
+
+/** Whether the corpus can support the scoring at all -- see GET /corpus/stats. */
+export interface CorpusStats {
+  chunks: number
+  files: number
+  provenance: { measured: number; synthetic: number; unknown: number }
+  key: {
+    strong: number
+    absent: number
+    mean_confidence: number
+    histogram: { from: number; to: number; count: number }[]
+  }
+  tempo: { with_bpm: number; histogram: { label: string; count: number }[] }
+  roles: {
+    unassigned: number
+    breakdown: { role: string | null; source: string | null; count: number }[]
+  }
+  essentia: EssentiaSummary
+}
+
+export function presets(): Promise<PresetList> {
+  return request('/presets')
+}
+
+export function corpusStats(): Promise<CorpusStats> {
+  return request('/corpus/stats')
+}
+
 export function analysisFiles(
   roots: string[] | null,
   limit: number,
@@ -294,17 +349,20 @@ export function analysisFiles(
   })
 }
 
-export function analyze(contextIds: string[], distance: number, k: number,
+export function analyze(contextIds: string[], distance: number | null, k: number,
                        sessionPath?: string | null,
-                       activeRoots?: string[] | null): Promise<AnalyzeResult> {
+                       activeRoots?: string[] | null,
+                       preset?: string | null): Promise<AnalyzeResult> {
   return request('/session/analyze', {
     method: 'POST',
     body: JSON.stringify({
       context_ids: contextIds,
+      // null lets the preset supply its own position; the dial passes a number
       distance,
       k,
       session_path: sessionPath ?? null,
-      active_roots: activeRoots
+      active_roots: activeRoots,
+      preset: preset ?? null
     })
   })
 }

@@ -2463,3 +2463,314 @@ button:focus-visible {
   width: 2px;
   background: var(--color-text);
 }
+
+/* ------------------------------------------------- dev: corpus + presets */
+
+.dev-corpus,
+.dev-presets {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.dev-corpus__toolbar,
+.dev-presets__toolbar {
+  display: flex;
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.dev-corpus__toolbar button,
+.dev-presets__toolbar button {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.dev-corpus__toolbar button:hover:not(:disabled),
+.dev-presets__toolbar button:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+
+.dev-corpus__toolbar button:disabled,
+.dev-presets__toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dev-corpus__block {
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-corpus__block h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dev-corpus__block p {
+  max-width: 68ch;
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dev-corpus__block code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-hover);
+  font-size: 11px;
+}
+
+.dev-corpus__verdict {
+  margin: 10px 0 0 !important;
+  padding-left: 9px;
+  border-left: 2px solid var(--color-border);
+}
+
+.dev-corpus__verdict[data-tone='warn'] { border-left-color: var(--color-error); }
+.dev-corpus__verdict[data-tone='good'] { border-left-color: var(--color-success); }
+
+/* Proportion bar. Every segment keeps a sliver so a small-but-real share is
+   visible rather than rounding away to nothing. */
+.dev-bar__track {
+  display: flex;
+  height: 10px;
+  gap: 2px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dev-bar__track > span {
+  min-width: 3px;
+  background: var(--color-muted);
+}
+
+.dev-bar__track > span[data-tone='good'] { background: var(--color-success); }
+.dev-bar__track > span[data-tone='warn'] { background: var(--color-accent); }
+.dev-bar__track > span[data-tone='bad']  { background: var(--color-error); }
+
+.dev-bar__key {
+  display: flex;
+  margin: 8px 0 0;
+  padding: 0;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  list-style: none;
+  font-size: 11px;
+}
+
+.dev-bar__key li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-muted);
+}
+
+.dev-bar__key li > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--color-muted);
+}
+
+.dev-bar__key li[data-tone='good'] > span { background: var(--color-success); }
+.dev-bar__key li[data-tone='warn'] > span { background: var(--color-accent); }
+.dev-bar__key li[data-tone='bad']  > span { background: var(--color-error); }
+
+.dev-bar__key strong { color: var(--color-text); font-variant-numeric: tabular-nums; }
+
+.dev-histogram {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-histogram li {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: 84px minmax(0, 1fr) 56px;
+  padding: 2px 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-histogram__label { color: var(--color-muted); }
+
+.dev-histogram__bar {
+  height: 9px;
+  border-radius: 4px;
+  background: var(--color-hover);
+}
+
+.dev-histogram__bar > span {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--color-muted);
+}
+
+.dev-histogram li[data-tone='good'] .dev-histogram__bar > span { background: var(--color-success); }
+.dev-histogram li[data-tone='warn'] .dev-histogram__bar > span { background: var(--color-accent); }
+.dev-histogram li[data-tone='bad']  .dev-histogram__bar > span { background: var(--color-error); }
+
+.dev-histogram__count { text-align: right; color: var(--color-muted); }
+
+.dev-corpus__roles {
+  display: flex;
+  margin: 12px 0 0;
+  padding: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+}
+
+.dev-corpus__roles li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.dev-corpus__roles small { color: var(--color-muted); }
+.dev-corpus__roles span { font-variant-numeric: tabular-nums; }
+
+.dev-corpus__values {
+  display: flex;
+  margin: 0;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  font-size: 11px;
+}
+
+.dev-corpus__values dt { color: var(--color-muted); }
+.dev-corpus__values dd { margin: 0; font-weight: 650; }
+
+/* --- presets --- */
+
+.dev-preset-table {
+  padding: 0 0 8px;
+}
+
+.dev-preset-table__head,
+.dev-preset-row {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: minmax(0, 2.1fr) 62px 62px 52px 82px 62px minmax(0, 1.5fr);
+  padding: 8px 14px;
+}
+
+.dev-preset-table__head {
+  position: sticky;
+  top: 52px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dev-preset-table ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-preset-table > ol > li {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-preset-row {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-preset-name,
+.dev-preset-result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dev-preset-name small,
+.dev-preset-result small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.dev-preset-notes {
+  max-width: 82ch;
+  margin: 0;
+  padding: 0 14px 14px;
+  color: var(--color-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.dev-preset-legend {
+  padding: 16px 14px 24px;
+}
+
+.dev-preset-legend h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dev-preset-legend dl {
+  display: grid;
+  margin: 0;
+  gap: 10px;
+}
+
+.dev-preset-legend dt {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dev-preset-legend dd {
+  max-width: 78ch;
+  margin: 2px 0 0;
+  color: var(--color-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.dev-preset-legend code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-hover);
+  font-size: 11px;
+}
+
+.dev-state-summary strong[data-tone='warn'] { color: var(--color-error); }
+.dev-state-summary strong[data-tone='good'] { color: var(--color-success); }

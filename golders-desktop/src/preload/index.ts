@@ -25,15 +25,19 @@ contextBridge.exposeInMainWorld('desktop', {
   loadSet: (path: string) => ipcRenderer.invoke('session:load', path),
   analyze: (
     contextIds: string[],
-    distance: number,
+    distance: number | null,
     k: number,
     sessionPath?: string | null,
-    activeRoots?: string[] | null
+    activeRoots?: string[] | null,
+    preset?: string | null
   ) => ipcRenderer.invoke(
-    'session:analyze', contextIds, distance, k, sessionPath ?? null, activeRoots
+    'session:analyze', contextIds, distance, k, sessionPath ?? null, activeRoots,
+    preset ?? null
   ),
   startEssentia: (root: string): Promise<string> => ipcRenderer.invoke('essentia:start', root),
   essentiaSummary: () => ipcRenderer.invoke('essentia:summary'),
+  presets: () => ipcRenderer.invoke('dev:presets'),
+  corpusStats: () => ipcRenderer.invoke('dev:corpus-stats'),
   chunkAudio: (chunkId: string, options?: AuditionOptions): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('chunk:audio', chunkId, options ?? {}),
 

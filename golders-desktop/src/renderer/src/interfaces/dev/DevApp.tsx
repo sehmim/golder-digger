@@ -1,15 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ApplicationState } from '../../application/ApplicationState'
+import type { CorpusStats } from '../../application/api'
 import type { GoldDiggerDiagnostics } from '../gold-digger/types'
 import AnalysisFilesTab from './AnalysisFilesTab'
 import ContextTab from './ContextTab'
+import CorpusTab from './CorpusTab'
+import PresetsTab from './PresetsTab'
 
 interface DevAppProps {
   state: ApplicationState
   goldDigger: GoldDiggerDiagnostics
 }
 
-type DevTab = 'files' | 'context'
+type DevTab = 'corpus' | 'presets' | 'files' | 'context'
 
 function StatePill({ active, children }: { active: boolean; children: React.ReactNode }) {
   return (
@@ -21,9 +24,28 @@ function StatePill({ active, children }: { active: boolean; children: React.Reac
 }
 
 export default function DevApp({ state, goldDigger }: DevAppProps): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<DevTab>('files')
+  const [activeTab, setActiveTab] = useState<DevTab>('corpus')
+  const [stats, setStats] = useState<CorpusStats | null>(null)
   const projectName = state.project?.session.name ?? 'None connected'
   const snapshot = { application: state, interfaces: { goldDigger } }
+
+  // The summary below describes the corpus, not this window. Renderer counters
+  // belong in Raw state -- a job count is bookkeeping for an ingest that has
+  // already finished and says nothing about whether the engine can discriminate.
+  useEffect(() => {
+    let cancelled = false
+    void window.desktop
+      .corpusStats()
+      .then((next) => !cancelled && setStats(next))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [state.ingest.busy])
+
+  const untrusted = stats
+    ? stats.provenance.synthetic + stats.provenance.unknown
+    : 0
 
   return (
     <section className="dev-page" aria-label="Developer window">
@@ -31,14 +53,40 @@ export default function DevApp({ state, goldDigger }: DevAppProps): React.JSX.El
         <aside className="dev-sidebar">
           <section className="dev-section">
             <div className="dev-state-summary">
-              <article><span>Gold Digger step</span><strong>{goldDigger.currentStep}</strong></article>
               <article>
                 <span>Backend</span>
                 <StatePill active={state.api.ready}>{state.api.ready ? 'Ready' : 'Starting'}</StatePill>
               </article>
-              <article><span>Folders</span><strong>{state.folders.length}</strong></article>
-              <article><span>Jobs</span><strong>{state.ingest.jobs.length}</strong></article>
               <article><span>Project</span><strong title={projectName}>{projectName}</strong></article>
+              <article>
+                <span>Chunks</span>
+                <strong>{stats ? stats.chunks.toLocaleString() : '—'}</strong>
+              </article>
+              <article>
+                <span>Files</span>
+                <strong>{stats ? stats.files.toLocaleString() : '—'}</strong>
+              </article>
+              <article title="Chunks whose CLAP vector was synthesized or predates the provenance column. Novelty is fiction for these.">
+                <span>Untrusted vectors</span>
+                <strong data-tone={untrusted > 0 ? 'warn' : 'good'}>
+                  {stats ? untrusted.toLocaleString() : '—'}
+                </strong>
+              </article>
+              <article title="Chunks with effectively no key evidence, where Fit's harmony term collapses to neutral.">
+                <span>No key evidence</span>
+                <strong data-tone={
+                  stats && stats.key.absent > stats.chunks / 2 ? 'warn' : undefined
+                }>
+                  {stats ? stats.key.absent.toLocaleString() : '—'}
+                </strong>
+              </article>
+              <article title="Chunks with no instrument assigned, where that term of Fit scores neutral whatever the preset.">
+                <span>No instrument</span>
+                <strong data-tone={stats && stats.roles.unassigned > 0 ? 'warn' : undefined}>
+                  {stats ? stats.roles.unassigned.toLocaleString() : '—'}
+                </strong>
+              </article>
+              <article><span>Folders</span><strong>{state.folders.length}</strong></article>
             </div>
 
             <section className="dev-state-panel">
@@ -56,18 +104,18 @@ export default function DevApp({ state, goldDigger }: DevAppProps): React.JSX.El
               ) : <p className="dev-state-empty">No folder roots.</p>}
             </section>
 
-            <section className="dev-state-panel">
-              <header>
-                <h3>Gold Digger UI</h3>
-                <StatePill active={!state.ingest.busy}>{state.ingest.busy ? 'Busy' : 'Idle'}</StatePill>
-              </header>
+            <details className="dev-state-raw">
+              <summary><span>Renderer internals</span><small>UI</small></summary>
               <dl className="dev-state-values">
+                <div><dt>Gold Digger step</dt><dd>{goldDigger.currentStep}</dd></div>
+                <div><dt>Ingest</dt><dd>{state.ingest.busy ? 'busy' : 'idle'}</dd></div>
                 <div><dt>Visible panels</dt><dd>{goldDigger.visiblePanels.join(', ')}</dd></div>
                 <div><dt>Leaving step</dt><dd>{goldDigger.leavingStep ?? '—'}</dd></div>
                 <div><dt>Reached project</dt><dd>{String(goldDigger.hasReachedProject)}</dd></div>
+                <div><dt>Jobs this session</dt><dd>{state.ingest.jobs.length}</dd></div>
                 <div><dt>Ready jobs</dt><dd>{state.ingest.readyJobCount}</dd></div>
               </dl>
-            </section>
+            </details>
 
             <details className="dev-state-raw">
               <summary><span>Raw state</span><small>JSON</small></summary>
@@ -78,26 +126,31 @@ export default function DevApp({ state, goldDigger }: DevAppProps): React.JSX.El
 
         <section className="dev-inspector">
           <nav className="dev-tabs" aria-label="Developer data views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'files'}
-              data-active={activeTab === 'files' || undefined}
-              onClick={() => setActiveTab('files')}
-            >
-              Files
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'context'}
-              data-active={activeTab === 'context' || undefined}
-              onClick={() => setActiveTab('context')}
-            >
-              Context
-            </button>
+            {(
+              [
+                ['corpus', 'Corpus'],
+                ['presets', 'Presets'],
+                ['files', 'Files'],
+                ['context', 'Context']
+              ] as [DevTab, string][]
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === id}
+                data-active={activeTab === id || undefined}
+                onClick={() => setActiveTab(id)}
+              >
+                {label}
+              </button>
+            ))}
           </nav>
           <div className="dev-tab-panel" role="tabpanel">
+            {activeTab === 'corpus' ? <CorpusTab /> : null}
+            {activeTab === 'presets' ? (
+              <PresetsTab project={state.project} activeRoots={state.activeFolderRoots} />
+            ) : null}
             {activeTab === 'files' ? <AnalysisFilesTab application={state} /> : null}
             {activeTab === 'context' ? <ContextTab project={state.project} /> : null}
           </div>

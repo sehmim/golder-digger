@@ -136,3 +136,40 @@ INGEST_WORKERS = int(os.getenv("GOLDDIGGER_WORKERS", "0")) or max(1, (os.cpu_cou
 # pass. On by default: it needs no models, and in mock mode it is the only real
 # measurement of key and tempo the pipeline has. GOLDDIGGER_ESSENTIA=0 skips it.
 ESSENTIA_ON_INGEST = os.getenv("GOLDDIGGER_ESSENTIA", "1") == "1"
+
+# Whether ingest workers run the whole extraction or only hash and Essentia.
+# On: measured 217s -> 73s over 24 real files on 8 cores, because the serial half
+# was 89% of the work (Essentia 47%, HPSS 35%, chroma/key 5%). Off restores the
+# old split, which is worth having: a worker peaks around 2.7 GB on a long stem,
+# so a machine with little RAM and many cores is better off not doing this.
+POOL_ANALYZE = os.getenv("GOLDDIGGER_POOL_ANALYZE", "1") == "1"
+
+# --- resolving a Live set ---
+# Matching a set's samples to the corpus is almost entirely SHA-256 over the
+# referenced audio -- 1.7 GB across 100 refs on a real project, about a second
+# warm and far worse cold. hashlib releases the GIL, so this one is threads.
+RESOLVE_WORKERS = min(8, (os.cpu_count() or 2))
+# (path, size, mtime) -> digest. A knob session re-resolves the same set every
+# time the project is reloaded, and nothing about those files has changed.
+RESOLVE_HASH_CACHE = 4096
+
+# --- role strictness ---
+# How hard the role term argues. `normal` is the original behaviour and the
+# numbers above are its source; the other three exist so a preset can trade
+# "definitely layers" against "might surprise you" without touching scoring.py.
+# A *different* role always scores 1.0 -- these only set the penalties.
+#   same    the candidate does the job something in the context already does
+#   pair    NEUTRAL_ROLE_PAIRS: different names, same space in the arrangement
+#   unknown no role on either side, so the term has nothing to say
+ROLE_MODES = {
+    "strict": {"same": 0.12, "pair": 0.45, "unknown": 0.45},
+    "normal": {"same": ROLE_SAME, "pair": NEUTRAL, "unknown": NEUTRAL},
+    "loose":  {"same": 0.50, "pair": 0.80, "unknown": 0.80},
+    # every candidate scores 1.0: role stops being part of the geometric mean at
+    # all, rather than being weighted down to near-nothing and still voting
+    "off":    {"same": 1.00, "pair": 1.00, "unknown": 1.00},
+}
+
+# The five presets themselves live in presets.py: they carry names and
+# explanatory copy alongside their numbers, which config.py has no business
+# holding. They are still tunables -- tune them there, not in scoring.py.

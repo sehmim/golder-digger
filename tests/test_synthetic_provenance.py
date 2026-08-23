@@ -43,6 +43,10 @@ def test_a_real_run_does_not_skip_synthetic_files(library, monkeypatch):
 
     # Real extraction itself is out of scope here -- what is under test is that
     # the file is offered to it at all rather than skipped as already ingested.
+    # One worker so the extraction happens in this process: with a pool, run_job
+    # extracts inside the workers and the spy below would never be called -- a
+    # monkeypatch does not cross a process boundary.
+    monkeypatch.setattr(config, "INGEST_WORKERS", 1)
     monkeypatch.setattr(config, "MOCK", False)
     seen_paths = []
     real = ingest.analyze_file

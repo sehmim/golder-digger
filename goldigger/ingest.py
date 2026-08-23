@@ -90,8 +90,18 @@ def _apply_filename(path, row: dict) -> None:
         row["key_source"] = "audio"
 
 
-def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
-    """One file -> chunk rows. Honours config.MOCK.
+def extract_local(path: Path, essentia: dict | None = None,
+                  device: str | None = None) -> tuple[list[dict], list | None]:
+    """One file -> (chunk rows, CLAP clips). Everything that is not CLAP.
+
+    Split out of analyze_file so an ingest worker can run it. Measured over ten
+    real files, the stages below are 89% of ingest wall time -- Essentia 47%,
+    HPSS 35%, chroma/key 5% -- and none of them need a model that would have to
+    be loaded once per worker process. CLAP is the exception and stays with the
+    caller: it is one model, on one device, and seven copies of it is not a
+    speed-up.
+
+    Returns `clips` as None in mock mode, where the rows are already complete.
 
     `essentia` is that file's MusicExtractor record when the pass ran. It is
     only consulted in mock mode, where a real measurement of key and tempo beats
@@ -144,11 +154,13 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
                 chroma=ch, clap=mock.clap(cid), synthetic=1))
         for r in rows:
             _apply_filename(path, r)
-        return rows
+        return rows, None
 
     y, sr = features.load_audio(path)
     duration = len(y) / sr
-    rhythm = features.analyze_rhythm(y, sr, device=_clap_model().device)
+    # beat-this is small (0.5s to load, 5% of ingest) so a worker can afford its
+    # own copy; CLAP is not, which is why its device is not asked for here.
+    rhythm = features.analyze_rhythm(y, sr, device=device or _clap_model().device)
     spans = features.chunk_boundaries(duration, rhythm)
 
     import librosa
@@ -177,6 +189,18 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
             chroma=ch, clap=None, synthetic=0))
         clips.append(librosa.resample(seg, orig_sr=sr, target_sr=config.CLAP_SR))
 
+    return rows, clips
+
+
+def apply_clap(path, rows: list[dict], clips: list) -> list[dict]:
+    """Fill in the embedding and everything downstream of it.
+
+    Kept apart from extract_local because this is the half that must run in the
+    process that owns the model. Role is decided here rather than in the worker:
+    the tag classifier only speaks when the filename said nothing, and its vote
+    does not exist until the embedding does.
+    """
+    role, role_source = features.role_from_path(path)
     clap = _clap_model()
     vecs = clap.embed_audio(clips)
     for row, vec, tags in zip(rows, vecs, clap.tags(vecs)):
@@ -187,28 +211,45 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
     return rows
 
 
+def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
+    """One file -> chunk rows, done entirely in this process.
+
+    The single-process path: the CLI, the tests, and any caller that is not the
+    pooled ingest loop.
+    """
+    rows, clips = extract_local(path, essentia)
+    return rows if clips is None else apply_clap(path, rows, clips)
+
+
 # ------------------------------------------------------- the parallel stage
 
-# Hashing and Essentia are the only per-file costs worth spreading. Everything
-# else a file needs -- chunking, the mock features, the upserts -- is
-# milliseconds and has to touch the connection, which stays on the job's own
-# thread. So a worker gets the two expensive halves and hands back plain data.
+# What a worker does, and why it stops where it does. Timed over ten real files:
+# Essentia 47%, HPSS 35%, chroma+key 5%, spectral 2%, decode 1% -- 89% of ingest,
+# none of it needing a model that would have to be loaded seven times. beat-this
+# (5%) is small enough to give every worker its own copy, on CPU so the processes
+# do not contend for one MPS device. CLAP (6%) is the line: one model, one
+# device, and the caller keeps it. The upserts stay on the job's thread too --
+# they are milliseconds, and the connection never leaves that thread.
 
 _SEEN: set[str] = set()
 _ESSENTIA = False
+_ANALYZE = False
 
 
-def _worker_init(seen: set[str], essentia: bool) -> None:
-    global _SEEN, _ESSENTIA
-    _SEEN, _ESSENTIA = seen, essentia
+def _worker_init(seen: set[str], essentia: bool, analyze: bool) -> None:
+    global _SEEN, _ESSENTIA, _ANALYZE
+    _SEEN, _ESSENTIA, _ANALYZE = seen, essentia, analyze
 
 
-def prepare(path_str: str, seen: set[str], essentia: bool) -> dict:
-    """One file's hash and Essentia record, or the error that stopped it.
+def prepare(path_str: str, seen: set[str], essentia: bool,
+            analyze: bool = False) -> dict:
+    """One file's hash, Essentia record and -- with `analyze` -- its chunk rows.
 
     The dedupe check happens here rather than in the caller so an already-known
     file costs one hash instead of a round trip: the worker holds a copy of the
     hashes that were present when the job started.
+
+    `analyze` off is the original contract, and the CLI and tests still use it.
     """
     try:
         fh = features.file_hash(path_str)
@@ -224,14 +265,25 @@ def prepare(path_str: str, seen: set[str], essentia: bool) -> dict:
             rec = essentia_runner.extract_one(path_str)
         except Exception:
             rec = None          # a file essentia cannot read is not a failed ingest
-    return dict(path=path_str, file_hash=fh, seen=False, essentia=rec)
+
+    record = dict(path=path_str, file_hash=fh, seen=False, essentia=rec)
+    if analyze:
+        try:
+            rows, clips = extract_local(Path(path_str), rec, device="cpu")
+            record["rows"], record["clips"] = rows, clips
+        except Exception as exc:
+            # The whole file failed, not just its features: report it the same way
+            # a bad hash is reported so the caller has one error path, not two.
+            return dict(path=path_str,
+                        error=f"{exc}\n{traceback.format_exc(limit=3)}")
+    return record
 
 
 def _prepare_pooled(path_str: str) -> dict:
-    return prepare(path_str, _SEEN, _ESSENTIA)
+    return prepare(path_str, _SEEN, _ESSENTIA, _ANALYZE)
 
 
-def prepared(paths, seen, essentia: bool, workers: int):
+def prepared(paths, seen, essentia: bool, workers: int, analyze: bool = False):
     """Yield one prepare() record per path, in walk order.
 
     Order is what makes the pool invisible to the caller: the loop downstream
@@ -239,24 +291,30 @@ def prepared(paths, seen, essentia: bool, workers: int):
     still means what it did. Only `workers * 4` files are ever in flight, so a
     library of thousands does not queue thousands of records into memory.
 
-    Serial when there is nothing to spread: without Essentia the per-file cost is
-    a hash, and a process pool costs more than it saves.
+    Serial when there is nothing to spread: with neither Essentia nor analysis
+    the per-file cost is a hash, and a process pool costs more than it saves.
     """
-    if workers <= 1 or not essentia:
+    if workers <= 1 or not (essentia or analyze):
         for path in paths:
-            yield prepare(str(path), seen, essentia)
+            yield prepare(str(path), seen, essentia, analyze)
         return
 
     # spawn, not fork: this runs on a background thread of the API process, and
     # forking a threaded parent is unsafe on macOS.
     with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn"),
                              initializer=_worker_init,
-                             initargs=(seen, essentia)) as pool:
+                             initargs=(seen, essentia, analyze)) as pool:
         remaining = iter(paths)
         inflight: deque = deque()
+        # A hash-and-Essentia record is a few hundred bytes, so the original
+        # window could be generous. An analysed one carries every chunk's audio
+        # at CLAP_SR -- a seven-minute stem came back as 42 clips, tens of
+        # megabytes -- and `workers * 4` of those in flight exhausted memory and
+        # took the pool down with it. Keep just enough queued to stay saturated.
+        window = (workers + 2) if analyze else (workers * 4)
 
         def top_up() -> None:
-            while len(inflight) < workers * 4:
+            while len(inflight) < window:
                 nxt = next(remaining, None)
                 if nxt is None:
                     return
@@ -375,9 +433,20 @@ def run_job(conn, job_id: str, roots):
             "SELECT DISTINCT file_hash FROM chunks"
             " WHERE synthetic IS NULL OR synthetic = 1")}
     done = failed = relinked = dropped = 0
+
+    # The workers extract as well as hash. Without this the serial loop below is
+    # 89% of ingest -- Essentia 47%, HPSS 35%, chroma/key 5% -- and the pool
+    # covers only the hash; with it the split inverts and CLAP is all that is
+    # left serial. Never under mock: there the features are a few milliseconds of
+    # arithmetic off the file hash, and handing that to a spawned process costs
+    # more than doing it. Essentia still pools there, which is what it is for.
+    analyze_in_pool = (config.POOL_ANALYZE and config.INGEST_WORKERS > 1
+                       and not config.MOCK)
+
     # The message now names the file that just came back rather than the one
     # about to start: with a pool ahead of this loop there are several of those.
-    for record in prepared(paths, seen, inline_essentia, config.INGEST_WORKERS):
+    for record in prepared(paths, seen, inline_essentia, config.INGEST_WORKERS,
+                           analyze=analyze_in_pool):
         path = Path(record["path"])
         conn.execute("UPDATE jobs SET message=? WHERE job_id=?", (str(path), job_id))
         try:
@@ -397,7 +466,13 @@ def run_job(conn, job_id: str, roots):
             # here froze the bar at zero for any folder already ingested.
             if fh not in seen:                  # content-hash dedupe
                 essentia = record["essentia"]
-                rows = analyze_file(path, essentia)
+                if "rows" in record:
+                    # A worker already did everything but the embedding. `clips`
+                    # is None under mock, where the rows came back complete.
+                    rows = (record["rows"] if record["clips"] is None
+                            else apply_clap(path, record["rows"], record["clips"]))
+                else:
+                    rows = analyze_file(path, essentia)
                 upsert(conn, rows)
                 if essentia:
                     # after upsert: the gate and the agreement flag read off the

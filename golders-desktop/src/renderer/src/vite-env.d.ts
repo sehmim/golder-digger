@@ -1,6 +1,13 @@
 /// <reference types="vite/client" />
 
-import type { AnalyzeResult, ApiStatus, EssentiaSummary, SessionSet } from './application/api'
+import type {
+  AnalyzeResult,
+  ApiStatus,
+  CorpusStats,
+  EssentiaSummary,
+  PresetList,
+  SessionSet
+} from './application/api'
 import type { AnalysisFilesResult } from './interfaces/dev/types'
 
 declare global {
@@ -28,13 +35,17 @@ declare global {
       loadSet: (path: string) => Promise<SessionSet>
       analyze: (
         contextIds: string[],
-        distance: number,
+        /** null lets `preset` supply the position; the dial passes a number. */
+        distance: number | null,
         k: number,
         sessionPath?: string | null,
-        activeRoots?: string[] | null
+        activeRoots?: string[] | null,
+        preset?: string | null
       ) => Promise<AnalyzeResult>
       startEssentia: (root: string) => Promise<string>
       essentiaSummary: () => Promise<EssentiaSummary>
+      presets: () => Promise<PresetList>
+      corpusStats: () => Promise<CorpusStats>
       chunkAudio: (
         chunkId: string,
         options?: { bpm?: number | null; contextIds?: string[]; candidateOnly?: boolean }
