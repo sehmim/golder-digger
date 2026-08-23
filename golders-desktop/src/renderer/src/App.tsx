@@ -84,7 +84,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <main className="page">
-      <nav className="steps" aria-label="Setup progress">
+      {/* <nav className="steps" aria-label="Setup progress">
         {STEPS.map((label, index) => (
           <span
             key={label}
@@ -95,9 +95,9 @@ export default function App(): React.JSX.Element {
             {label}
           </span>
         ))}
-      </nav>
+      </nav> */}
 
-      <div className="stage" data-step={step}>
+      <div className="stage " data-step={step}>
         {shown.map((candidate) => (
           <div key={candidate} className={panelClass(candidate)}>
             {candidate === 'sources' ? (
@@ -119,6 +119,7 @@ export default function App(): React.JSX.Element {
                 startIngest={startIngest}
                 sourceCount={readyJobs.length}
                 onBack={() => goTo('sources')}
+                dugSet={set}
                 onDig={(connected) => {
                   setSet(connected)
                   goTo('dig')

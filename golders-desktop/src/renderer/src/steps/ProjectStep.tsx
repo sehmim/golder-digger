@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { baseName } from '../lib/api'
 import type { SessionSample, SessionSet } from '../lib/api'
 import { progressOf } from '../lib/useIngest'
@@ -10,6 +10,8 @@ interface ProjectStepProps {
   sourceCount: number
   onBack: () => void
   onDig: (set: SessionSet) => void
+  /** The set already being dug, when the user came back from that step. */
+  dugSet: SessionSet | null
 }
 
 function matchedMeta(sample: SessionSample): string {
@@ -41,13 +43,22 @@ export default function ProjectStep({
   startIngest,
   sourceCount,
   onBack,
-  onDig
+  onDig,
+  dugSet
 }: ProjectStepProps): React.JSX.Element {
-  const [set, setSet] = useState<SessionSet | null>(null)
+  // Seeded from the dig step's set so coming back shows the resolved card, not
+  // an empty dropzone. This component unmounts during the dig, so its own state
+  // would not survive the round trip.
+  const [set, setSet] = useState<SessionSet | null>(dugSet)
   const [reading, setReading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
+
+  // Once per set path, so a failed sample cannot loop the auto-ingest, and
+  // coming back from the dig step does not immediately yank the screen forward.
+  const autoIngested = useRef(new Set<string>())
+  const autoAdvanced = useRef(new Set<string>())
 
   const job = ingestJobs.find((candidate) => candidate.jobId === jobId) ?? null
 
@@ -93,6 +104,34 @@ export default function ProjectStep({
   }
 
   const missing = set?.unmatched.filter((sample) => sample.ingest_path).length ?? 0
+
+  // The whole step is automatic: resolve, ingest what the set references but the
+  // corpus lacks, resolve again, then hand over to the dig. The buttons remain as
+  // the manual override, not the expected path.
+  useEffect(() => {
+    if (!set || job || reading) return
+    const path = set.session.path
+
+    if (missing > 0 && !autoIngested.current.has(path)) {
+      autoIngested.current.add(path)
+      void ingestMissing()
+      return
+    }
+
+    // A set that was already dug advances only by hand -- the user came back on
+    // purpose, and yanking them forward again would fight the back button.
+    const alreadyDug = dugSet?.session.path === path
+    const settled = missing === 0 || autoIngested.current.has(path)
+    if (!alreadyDug && settled && set.context_ids.length > 0 && !autoAdvanced.current.has(path)) {
+      // long enough to read the resolved list before it slides away; the ref is
+      // marked when it fires, so an interim re-render just reschedules it
+      const advance = setTimeout(() => {
+        autoAdvanced.current.add(path)
+        onDig(set)
+      }, 1400)
+      return () => clearTimeout(advance)
+    }
+  })
 
   return (
     <section className="project-connect">
@@ -147,9 +186,17 @@ export default function ProjectStep({
               <p className="set-name">{set.session.name}</p>
               <p className="set-meta">
                 {set.session.tempo ? `${set.session.tempo} BPM` : 'tempo unknown'}
-                {set.session.key ? ` · ${set.session.key}` : ''} · {set.matched.length} of{' '}
-                {set.session.samples} samples in your library
+                {set.session.key
+                  ? ` · ${set.session.key}`
+                  : set.session.in_key
+                    ? ''
+                    : ' · no key set in Live'}
+                {' · '}
+                {set.matched.length} of {set.session.samples} samples in your library
               </p>
+              {set.session.creator ? (
+                <p className="set-meta set-meta--soft">{set.session.creator}</p>
+              ) : null}
             </div>
             <button className="clear-button" type="button" onClick={() => void chooseProject()}>
               Change set
@@ -219,16 +266,25 @@ export default function ProjectStep({
             </button>
           ) : null}
 
-          <button
-            className="primary-button primary-button--wide"
-            type="button"
-            disabled={set.context_ids.length === 0}
-            onClick={() => set && onDig(set)}
-          >
-            {set.context_ids.length === 0
-              ? 'No samples resolved yet'
-              : `Start digging · ${set.context_ids.length} context chunks`}
-          </button>
+          {set.context_ids.length === 0 ? (
+            <p className="analysis">
+              {job ? 'Ingesting the set’s samples…' : 'No samples resolved yet'}
+            </p>
+          ) : dugSet?.session.path === set.session.path ? (
+            <button
+              className="primary-button primary-button--wide"
+              type="button"
+              onClick={() => onDig(set)}
+            >
+              Back to digging · {set.context_ids.length} context chunks
+            </button>
+          ) : (
+            <p className="analysis" aria-live="polite">
+              {job
+                ? `Preparing ${set.context_ids.length} context chunks…`
+                : `Starting the dig · ${set.context_ids.length} context chunks`}
+            </p>
+          )}
         </div>
       )}
 

@@ -66,8 +66,17 @@ scoring, API, desktop) is real and runs end to end.
 default). That makes key and tempo real measurements even in mock mode — Essentia's
 answer overrides the hash-derived one, and 0 BPM is stored as `NULL` because it means
 "one-shot", not "no tempo". Chroma and the CLAP vector stay synthetic, so **Fit's
-harmony term and Novelty are still fiction under mock**. It also costs about a second
-per file: `GOLDDIGGER_ESSENTIA=0` restores the ~150 files/second mock speed.
+harmony term and Novelty are still fiction under mock**. It also dominates ingest time
+— a second on a short sample, ~20s on a seven-minute stem — so
+`GOLDDIGGER_ESSENTIA=0` restores the ~150 files/second mock speed.
+
+**Ingest spreads hashing and Essentia over a process pool** (`INGEST_WORKERS`, default
+cpu_count-1; `GOLDDIGGER_WORKERS` overrides). Processes, not threads: MusicExtractor
+holds the GIL for its whole run, so four threads measured no faster than serial while
+four processes were 3.6x. `ingest.prepared()` yields in walk order, so the loop that
+writes to SQLite is unchanged and single-threaded — the connection never leaves the
+job's thread. A test that stubs `extract_one` must set `INGEST_WORKERS = 1`; a
+monkeypatch does not cross a process boundary.
 
 Build and test against mock. Set `GOLDDIGGER_MOCK=0` only when deliberately exercising
 the real extractors — the first call loads torch and takes minutes.
