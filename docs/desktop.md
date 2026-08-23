@@ -35,7 +35,8 @@ App
 │       ├── GoldDiggerApp          sibling interface
 │       ├── GoldenApp              sibling interface
 │       ├── SettingsApp            sibling interface
-│       └── FolderManager          shell-level overlay
+│       ├── FolderManager          shell-level overlay
+│       └── ContextSelector        shell-level overlay
 └── DevWindow                      separate Electron window; snapshot observer
 ```
 
@@ -61,6 +62,7 @@ src/renderer/src/
     useIngest.ts             ingest jobs and progress events
 
   shell/
+    ContextSelector.tsx      saved-project context above every interface
     FolderManager.tsx        folder controls above every interface
     RendererShell.tsx        selects and keeps interfaces mounted
 
@@ -78,8 +80,10 @@ src/renderer/src/
       FolderStrip.tsx
       GoldenApp.tsx
       GoldenKnob.tsx
+      GoldenResults.tsx
     dev/
       AnalysisFilesTab.tsx
+      ContextTab.tsx
       DevApp.tsx
       DevWindow.tsx
       types.ts
@@ -145,6 +149,7 @@ It never deletes audio files or cached SQLite analysis.
 - The active primary `InterfaceId` (Dev is excluded).
 - The latest Gold Digger diagnostic snapshot published to Dev.
 - Whether Folder Manager is open and which folder it should focus.
+- Whether Context Selector is open.
 - Shortcut subscriptions and their development fallback.
 
 The destination union and labels live in `shared/interfaceNavigation.ts`, not in
@@ -154,8 +159,9 @@ individual interfaces.
 
 - Gold Digger owns its current workflow step, leaving panel, transition timers,
   and one-time advancement guards.
-- Golden UI owns the knob's current numeric position. Its folder strip renders
-  shared state and opens the shell overlay; it does not own folder data.
+- Golden UI owns the knob's current numeric position. Its folder strip and context
+  summary render shared state and open shell overlays; it owns neither folders nor
+  the connected project.
 - The shared interface menu owns whether its dropdown is open.
 
 Gold Digger's current step is useful to Dev, but it is not application state. The
@@ -180,12 +186,17 @@ candidate chunks. This workflow and its knob are intentionally isolated inside
 ### Golden UI
 
 Golden UI is an experimental interface built from a blank canvas. It contains one
-centered, draggable knob, a compact recent-folder strip, a Folder Manager trigger,
-and the shared interface menu. Folder buttons show short names, keep full paths in
-their title, and open Folder Manager focused on the selected record.
+centered, draggable knob, a compact recent-folder strip, a minimal Golden Context
+control, a Folder Manager trigger, and the shared interface menu. Folder buttons
+show short names, keep full paths in their title, and open Folder Manager focused
+on the selected record.
 
-The knob responds to vertical pointer dragging and arrow keys. It has no engine
-behavior yet.
+The context control opens Context Selector. With no project it reads `Select
+context`; after a saved `.als` is resolved it summarizes available tempo and tonal
+center. The knob responds to vertical pointer dragging and arrow keys. Releasing
+it makes one ranking request using the connected project's context chunks and the
+active folder roots, then opens a blurred, scrollable results layer. Back closes
+the layer without resetting the knob.
 
 ### Folder Manager
 
@@ -194,6 +205,18 @@ hamburger destination. It can render above any sibling without depending on that
 interface. The first trigger lives beside Golden UI's hamburger. It supports add,
 enable, disable, retry, and “Remove from workspace.” Removal deletes only the
 settings record; source audio and SQLite analysis are untouched.
+
+### Context Selector
+
+Context Selector is the other shell-level modal. It chooses, changes, or clears a
+saved Ableton `.als` project through the existing project dialog and resolver. A
+successful load writes the shared `project` state immediately. Golden UI consumes
+that state as a compact tempo and tonal-center summary.
+
+This is only the first Golden Context source. Missing-reference ingestion is still
+owned by the original Gold Digger `ProjectStep`, and shared state does not yet
+distinguish available project references from deliberately included inputs. Product
+work is tracked in [golden-ui-roadmap.md](golden-ui-roadmap.md).
 
 ### Dev
 
@@ -208,10 +231,12 @@ second provider, duplicate ingest subscriptions, and state that only appears to
 match the primary application.
 
 Its workspace has two columns. The narrower left column renders the live state
-snapshot. The wider right column is a tabbed inspector. The first `Files` tab
-requests paginated file-level summaries through main rather than embedding the
-chunk corpus in application state. Folder filters come from the snapshot, while
-the analysis rows come from SQLite through `POST /library/files`.
+snapshot. The wider right column is a tabbed inspector. `Files` requests paginated
+file-level summaries through main rather than embedding the chunk corpus in
+application state. `Context` reads the snapshot's connected project and presents
+declared session facts, referenced audio, match methods, unresolved files, and
+resulting context chunk counts. Folder filters come from the snapshot, while Files
+rows come from SQLite through `POST /library/files`.
 
 ### Settings
 
@@ -325,6 +350,10 @@ method. Renderer-only edits hot-reload.
 - Packaging still assumes a repository checkout and local Python environment.
 - Python exposes no ingest cancellation; dismissing a row only removes it from
   the renderer.
-- Golden UI's knob is visual and has no engine action yet.
+- Golden results cannot yet be auditioned or dragged into another application.
+- Golden Context is currently stored as a resolved Ableton `project`, not a neutral
+  multi-source context model, and is not persisted across restarts.
+- Golden UI resolves referenced project audio but does not yet run the original
+  interface's automatic missing-reference ingestion.
 - Most interface styling still resides in `styles.css`; component and
   interface-specific stylesheet extraction remains future cleanup.

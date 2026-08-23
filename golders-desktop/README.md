@@ -30,7 +30,8 @@ RendererShell
         ├── Gold Digger App
         ├── Golden UI
         ├── Settings
-        └── Folder Manager overlay
+        ├── Folder Manager overlay
+        └── Context Selector overlay
 
 Dev window ← snapshots from the primary renderer
 ```
@@ -51,13 +52,16 @@ Current interfaces:
 | Interface | Purpose |
 |---|---|
 | Gold Digger App | Primary product workflow: sources, project, and digging. |
-| Golden UI | Experimental knob and minimal folder strip. |
+| Golden UI | Minimal folders and context, release-to-rank knob, and overlaid results. |
 | Settings | Application configuration, currently including knob appearance. |
+
+The current working flow, intended Golden UI journey, open decisions, and ordered
+product work are maintained in the [Golden UI roadmap](../docs/golden-ui-roadmap.md).
 
 Dev is a developer tool rather than a primary interface. It displays live state
 snapshots while the application remains interactive in its own window. Its left
-column shows application state; its larger tabbed inspector begins with a
-paginated, folder-filterable view of analyzed files.
+column shows application state; its larger inspector has Files and Context tabs
+for analyzed-library and saved-project details.
 
 ## Navigation
 
@@ -67,6 +71,8 @@ paginated, folder-filterable view of analyzed files.
 - The current interface remains visible but disabled in the menu.
 - Folder Manager is a shell overlay reached beside the Golden UI hamburger, not
   another menu destination.
+- Context Selector is a shell overlay reached through Golden UI's upper-left
+  context control.
 
 ## Shared UI rules
 

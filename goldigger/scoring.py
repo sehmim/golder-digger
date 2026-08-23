@@ -21,6 +21,9 @@ class Corpus:
 
     def __init__(self, rows):
         self.rows = list(rows)
+        # A lightweight identity that can safely outlive this object in bounded
+        # cache keys. Unlike id(self), it can never be reused for a later corpus.
+        self.cache_token = object()
         n = len(self.rows)
         self.ids = [r["chunk_id"] for r in self.rows]
         self.index = {cid: i for i, cid in enumerate(self.ids)}

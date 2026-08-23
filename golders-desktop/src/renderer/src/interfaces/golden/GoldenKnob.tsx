@@ -1,24 +1,48 @@
 import { useRef, useState } from 'react'
 import type { KnobStyle } from '../../application/ApplicationState'
 
-const MIN = 0
-const MAX = 100
+const DISTANCE_STEPS = [10, 30, 50, 70, 90] as const
+const STEP_LABELS = ['Closest', 'Familiar', 'Balanced', 'Unexpected', 'Far out'] as const
 const SWEEP = 280
+const PIXELS_PER_STEP = 24
 
 interface GoldenKnobProps {
   value: number
   onChange: (value: number) => void
+  onCommit: (value: number) => void
   style: KnobStyle
 }
 
-function clamp(value: number): number {
-  return Math.min(MAX, Math.max(MIN, value))
+function stepIndex(value: number): number {
+  let nearest = 0
+  for (let index = 1; index < DISTANCE_STEPS.length; index += 1) {
+    if (Math.abs(DISTANCE_STEPS[index] - value) < Math.abs(DISTANCE_STEPS[nearest] - value)) {
+      nearest = index
+    }
+  }
+  return nearest
 }
 
-export default function GoldenKnob({ value, onChange, style }: GoldenKnobProps): React.JSX.Element {
-  const drag = useRef<{ startY: number; startValue: number } | null>(null)
+function stepAt(index: number): number {
+  const clamped = Math.min(DISTANCE_STEPS.length - 1, Math.max(0, index))
+  return DISTANCE_STEPS[clamped]
+}
+
+export default function GoldenKnob({
+  value,
+  onChange,
+  onCommit,
+  style
+}: GoldenKnobProps): React.JSX.Element {
+  const drag = useRef<{
+    startY: number
+    startValue: number
+    currentValue: number
+    changed: boolean
+  } | null>(null)
   const [dragging, setDragging] = useState(false)
-  const angle = -SWEEP / 2 + (value / MAX) * SWEEP
+  const position = stepIndex(value)
+  const angle = -SWEEP / 2 + (position / (DISTANCE_STEPS.length - 1)) * SWEEP
 
   return (
     <button
@@ -28,22 +52,30 @@ export default function GoldenKnob({ value, onChange, style }: GoldenKnobProps):
       type="button"
       role="slider"
       aria-label="Knob"
-      aria-valuemin={MIN}
-      aria-valuemax={MAX}
-      aria-valuenow={value}
+      aria-valuemin={1}
+      aria-valuemax={DISTANCE_STEPS.length}
+      aria-valuenow={position + 1}
+      aria-valuetext={STEP_LABELS[position]}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId)
-        drag.current = { startY: event.clientY, startValue: value }
+        drag.current = { startY: event.clientY, startValue: value, currentValue: value, changed: false }
         setDragging(true)
       }}
       onPointerMove={(event) => {
         if (!drag.current) return
-        onChange(clamp(Math.round(drag.current.startValue + (drag.current.startY - event.clientY))))
+        const startPosition = stepIndex(drag.current.startValue)
+        const offset = Math.round((drag.current.startY - event.clientY) / PIXELS_PER_STEP)
+        const next = stepAt(startPosition + offset)
+        drag.current.currentValue = next
+        drag.current.changed ||= next !== drag.current.startValue
+        onChange(next)
       }}
       onPointerUp={(event) => {
         event.currentTarget.releasePointerCapture(event.pointerId)
+        const completed = drag.current
         drag.current = null
         setDragging(false)
+        if (completed?.changed) onCommit(completed.currentValue)
       }}
       onPointerCancel={() => {
         drag.current = null
@@ -52,11 +84,21 @@ export default function GoldenKnob({ value, onChange, style }: GoldenKnobProps):
       onKeyDown={(event) => {
         if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
           event.preventDefault()
-          onChange(clamp(value + 1))
+          onChange(stepAt(position + 1))
         }
         if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
           event.preventDefault()
-          onChange(clamp(value - 1))
+          onChange(stepAt(position - 1))
+        }
+      }}
+      onKeyUp={(event) => {
+        if (
+          event.key === 'ArrowUp' ||
+          event.key === 'ArrowRight' ||
+          event.key === 'ArrowDown' ||
+          event.key === 'ArrowLeft'
+        ) {
+          onCommit(value)
         }
       }}
     >

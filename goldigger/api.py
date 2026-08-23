@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 import os
 import json
 from pathlib import Path
+from threading import Lock
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
@@ -15,6 +17,32 @@ from . import ableton, audition, config, db, essentia_runner, ingest, listening,
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
+
+# A knob session revisits a very small set of queries. Keep those results in the
+# backend so every renderer gets the same behaviour and returning to a detent is
+# independent of UI lifetime. These are deliberately bounded runtime caches;
+# SQLite remains the durable source of truth.
+_ANALYSIS_CACHE_LIMIT = 32
+_ROOT_MASK_CACHE_LIMIT = 16
+_analysis_cache: OrderedDict[tuple, dict] = OrderedDict()
+_root_mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+_cache_lock = Lock()
+
+
+def _cache_get(cache: OrderedDict, key: tuple):
+    with _cache_lock:
+        value = cache.get(key)
+        if value is not None:
+            cache.move_to_end(key)
+        return value
+
+
+def _cache_put(cache: OrderedDict, key: tuple, value, limit: int):
+    with _cache_lock:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > limit:
+            cache.popitem(last=False)
 
 
 @app.on_event("startup")
@@ -262,13 +290,42 @@ def _under_root(path: str, root: str) -> bool:
         return False
 
 
+def _normalized_roots(roots: list[str]) -> tuple[str, ...]:
+    """Canonicalize a root set without touching the filesystem.
+
+    Root order and duplicates cannot change a candidate set, so they must not
+    create separate cache entries. Avoiding ``Path.resolve`` here is also
+    important: a large corpus may live on slow or disconnected volumes.
+    """
+    return tuple(sorted({
+        os.path.normcase(os.path.abspath(os.path.expanduser(root)))
+        for root in roots
+    }))
+
+
+def _under_normalized_root(path: str, root: str) -> bool:
+    return path == root or path.startswith(root if root.endswith(os.sep) else root + os.sep)
+
+
 def _root_mask(corpus: scoring.Corpus, roots: list[str] | None) -> np.ndarray | None:
     if roots is None:
         return None
-    return np.array([
-        any(_under_root(row["path"], root) for root in roots)
-        for row in corpus.rows
+    normalized_roots = _normalized_roots(roots)
+    key = (corpus.cache_token, normalized_roots)
+    cached = _cache_get(_root_mask_cache, key)
+    if cached is not None:
+        return cached
+
+    mask = np.array([
+        any(_under_normalized_root(path, root) for root in normalized_roots)
+        for path in (
+            os.path.normcase(os.path.abspath(os.path.expanduser(row["path"])))
+            for row in corpus.rows
+        )
     ], dtype=bool)
+    mask.setflags(write=False)
+    _cache_put(_root_mask_cache, key, mask, _ROOT_MASK_CACHE_LIMIT)
+    return mask
 
 
 @app.post("/folders/status")
@@ -305,9 +362,33 @@ def _load_als_cached(path: str) -> dict:
     return state["als"]
 
 
+def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
+    """Everything that can alter a completed ranking.
+
+    Corpus identity changes whenever ingestion or a manual tag reloads it. The
+    project stamp invalidates a ranking when the saved Live set changes. Keep
+    context order because it is part of the request's exact semantics.
+    """
+    session_stamp = None
+    if req.session_path:
+        if not os.path.isfile(req.session_path):
+            raise HTTPException(404, f"no such file: {req.session_path}")
+        session_stamp = (os.path.abspath(req.session_path), os.path.getmtime(req.session_path))
+    roots = None if req.active_roots is None else _normalized_roots(req.active_roots)
+    return (
+        corpus.cache_token, tuple(req.context_ids), float(req.distance), req.k,
+        session_stamp, roots,
+    )
+
+
 @app.post("/session/analyze")
 def analyze(req: AnalyzeReq):
     corpus = _corpus()
+    cache_key = _analysis_cache_key(corpus, req)
+    cached = _cache_get(_analysis_cache, cache_key)
+    if cached is not None:
+        return cached
+
     allowed = _root_mask(corpus, req.active_roots)
     try:
         ctx = scoring.build_context(corpus, req.context_ids)
@@ -324,18 +405,20 @@ def analyze(req: AnalyzeReq):
     results, floor = scoring.select(corpus, ctx, req.distance, req.k, allowed)
     candidate_count = int(allowed.sum()) if allowed is not None else len(corpus)
     candidate_synthetic = corpus.synthetic[allowed] if allowed is not None else corpus.synthetic
-    return {"distance": req.distance, "fit_floor": round(floor, 3),
-            "corpus_size": candidate_count, "count": len(results), "results": results,
-            "session_context": applied,
-            "context": {"bpm": ctx["bpm"],
-                        "tonic": (config.PITCH_NAMES[ctx["tonic"]]
-                                  if ctx["tonic"] >= 0 else None),
-                        "roles": sorted(ctx["roles"])},
-            # Read off the corpus, not off config.MOCK: what matters is how the
-            # rows being ranked were written, and a library ingested under mock
-            # stays fiction long after the flag is turned off.
-            "synthetic_novelty": bool(candidate_synthetic.any()),
-            "synthetic_chunks": int(candidate_synthetic.sum())}
+    response = {"distance": req.distance, "fit_floor": round(floor, 3),
+                "corpus_size": candidate_count, "count": len(results), "results": results,
+                "session_context": applied,
+                "context": {"bpm": ctx["bpm"],
+                            "tonic": (config.PITCH_NAMES[ctx["tonic"]]
+                                      if ctx["tonic"] >= 0 else None),
+                            "roles": sorted(ctx["roles"])},
+                # Read off the corpus, not off config.MOCK: what matters is how the
+                # rows being ranked were written, and a library ingested under mock
+                # stays fiction long after the flag is turned off.
+                "synthetic_novelty": bool(candidate_synthetic.any()),
+                "synthetic_chunks": int(candidate_synthetic.sum())}
+    _cache_put(_analysis_cache, cache_key, response, _ANALYSIS_CACHE_LIMIT)
+    return response
 
 
 def _session_key(als: dict) -> str | None:

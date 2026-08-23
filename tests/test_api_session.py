@@ -5,6 +5,7 @@ happened to resolve, which is the accident the set's own header exists to
 settle. These pin the route to the CLI's behaviour.
 """
 import gzip
+import os
 from pathlib import Path
 
 import numpy as np
@@ -111,6 +112,48 @@ def test_the_parse_is_cached_per_file(client, tmp_path, monkeypatch):
             "context_ids": ids(c, conn), "distance": distance, "session_path": str(als)})
 
     assert len(calls) == 1
+
+
+def test_returning_to_a_knob_position_reuses_the_completed_ranking(client, monkeypatch):
+    """A -> B -> A computes two rankings, not three."""
+    c, conn, root = client
+    calls = []
+    real = api.scoring.select
+    monkeypatch.setattr(
+        api.scoring, "select",
+        lambda *args, **kwargs: (calls.append(args[2]), real(*args, **kwargs))[1],
+    )
+
+    request = {"context_ids": ids(c, conn), "k": 3, "active_roots": [str(root)]}
+    first = c.post("/session/analyze", json={**request, "distance": 10}).json()
+    c.post("/session/analyze", json={**request, "distance": 30})
+    repeated = c.post("/session/analyze", json={**request, "distance": 10}).json()
+
+    assert calls == [10.0, 30.0]
+    assert repeated == first
+
+
+def test_changed_saved_set_does_not_reuse_an_old_ranking(client, tmp_path, monkeypatch):
+    c, conn, root = client
+    als = write_als(tmp_path / "Set.als", root / "0.wav", tempo=128, root_pc=2, in_key="true")
+    calls = []
+    real = api.scoring.select
+    monkeypatch.setattr(
+        api.scoring, "select",
+        lambda *args, **kwargs: (calls.append(True), real(*args, **kwargs))[1],
+    )
+    request = {
+        "context_ids": ids(c, conn), "distance": 50, "session_path": str(als),
+    }
+
+    c.post("/session/analyze", json=request)
+    write_als(als, root / "0.wav", tempo=132, root_pc=2, in_key="true")
+    stat = als.stat()
+    os.utime(als, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    changed = c.post("/session/analyze", json=request).json()
+
+    assert len(calls) == 2
+    assert changed["context"]["bpm"] == 132.0
 
 
 def test_mock_novelty_is_declared_as_synthetic(client):

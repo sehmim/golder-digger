@@ -33,6 +33,7 @@ export default function ContextSelector({ onClose }: ContextSelectorProps): Reac
     setError(null)
     try {
       actions.setProject(await window.desktop.loadSet(path))
+      onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {

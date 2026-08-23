@@ -12,7 +12,7 @@ These files go deeper on one area each.
 | [api.md](api.md) | You are adding or calling an HTTP route. |
 | [ableton.md](ableton.md) | You are working on `.als` parsing or sample resolution. |
 | [desktop.md](desktop.md) | You are in `golders-desktop/` — renderer layers, interfaces, state, theme, and IPC. |
-| [golden-ui-roadmap.md](golden-ui-roadmap.md) | You are completing Golden UI's context → knob → suggestions user journey. |
+| [golden-ui-roadmap.md](golden-ui-roadmap.md) | You need the current user flow, target journey, decisions, or ordered product to-do list. |
 | [development.md](development.md) | Setup, running things, and the traps that cost an hour. |
 
 Out of scope everywhere: `golddigger-genai/`.

@@ -106,6 +106,14 @@ is several requests against one unchanged file.
 `context` is what Fit was actually matched against, so a UI can say "124 BPM, from
 Live" rather than leaving the user to guess.
 
+Completed rankings are held in a bounded in-memory cache keyed by corpus identity,
+context ids, distance, result count, saved-set path and modification time, and active
+folder roots. A five-detent sweep therefore computes each distinct ranking once, and
+returning to a previous detent reuses its exact result. Candidate-folder masks have a
+separate bounded cache shared across detents. Both caches disappear when the backend
+stops; SQLite remains the durable corpus, and a corpus reload or changed `.als` file
+cannot reuse an old ranking.
+
 `active_roots` limits candidate rows using path-aware containment. Omitting it or
 sending `null` preserves the legacy whole corpus. Sending `[]` deliberately yields
 no candidates. Context chunks remain available for building the musical context
