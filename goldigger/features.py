@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import struct
 from pathlib import Path
 
 import librosa
@@ -22,10 +23,67 @@ def file_hash(path) -> str:
 
 
 def load_audio(path, sr=config.SR):
-    y, _ = librosa.load(str(path), sr=sr, mono=True)
+    try:
+        y, _ = librosa.load(str(path), sr=sr, mono=True)
+    except Exception:
+        y = _load_able_aifc(path, sr)
+        if y is None:
+            raise               # the decoder's error names the file and format
     if len(y) > sr * config.MAX_ANALYZE_SEC:
         y = y[: int(sr * config.MAX_ANALYZE_SEC)]
     return y, sr
+
+
+def _load_able_aifc(path, sr):
+    """Ableton stamps the AIFC files it consolidates with a proprietary 'able'
+    compression type that libsndfile -- and even CoreAudio -- refuse to open,
+    but the payload is plain big-endian PCM: the SSND length is exactly
+    frames * channels * bytes-per-sample, which is the check that vouches for
+    reading it raw. Returns the decoded mono signal at `sr`, or None whenever
+    that vouching fails, so the caller re-raises the real decoder's error
+    instead of guessing at bytes this parser cannot account for."""
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) < 12 or data[:4] != b"FORM" or data[8:12] != b"AIFC":
+        return None
+    comm = ssnd = None
+    pos = 12
+    while pos + 8 <= len(data):
+        cid = data[pos:pos + 4]
+        size = struct.unpack(">I", data[pos + 4:pos + 8])[0]
+        if cid == b"COMM":
+            comm = data[pos + 8:pos + 8 + size]
+        elif cid == b"SSND":
+            ssnd = data[pos + 8:pos + 8 + size]
+        pos += 8 + size + (size & 1)        # chunks are word-aligned
+    if comm is None or ssnd is None or len(comm) < 22 or len(ssnd) < 8:
+        return None
+    if comm[18:22] != b"able":
+        return None                         # some other codec: not ours to guess
+    channels, frames, bits = struct.unpack(">hIh", comm[:8])
+    exp, mant = struct.unpack(">HQ", comm[8:18])
+    file_sr = mant * 2.0 ** (exp - 16383 - 63)  # 80-bit extended float
+    step = (bits + 7) // 8
+    offset = struct.unpack(">I", ssnd[:4])[0]
+    pcm = ssnd[8 + offset:8 + offset + frames * channels * step]
+    if channels < 1 or frames < 1 or file_sr <= 0 \
+            or len(pcm) != frames * channels * step:
+        return None                         # not the plain PCM the tag hides
+    if step == 3:
+        b = np.frombuffer(pcm, np.uint8).astype(np.int32).reshape(-1, 3)
+        ints = (b[:, 0] << 16) | (b[:, 1] << 8) | b[:, 2]
+        ints -= (ints & 0x800000) << 1      # sign-extend 24-bit
+    elif step in (1, 2, 4):
+        ints = np.frombuffer(pcm, f">i{step}").astype(np.int32)
+    else:
+        return None
+    y = ints.reshape(frames, channels).mean(axis=1)
+    # scale by the container width, not `bits`: AIFF left-justifies samples
+    # whose bit depth is not a whole number of bytes
+    y = (y / float(1 << (8 * step - 1))).astype(np.float32)
+    if file_sr != sr:
+        y = librosa.resample(y, orig_sr=file_sr, target_sr=sr)
+    return y
 
 
 # ---------------------------------------------------------------- rhythm
