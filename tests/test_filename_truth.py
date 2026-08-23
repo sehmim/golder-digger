@@ -45,5 +45,16 @@ def test_chord_names_parse_to_root_and_quality():
     assert key_from_name("Organ_Chord1_Bm9.wav") == (11, False)
 
 
+def test_capitalised_quality_keeps_its_accidental():
+    """'F#Maj7' must not degrade to F natural.
+
+    The quality alternation is matched case-insensitively, so 'Maj' resolves as
+    a quality rather than backtracking the accidental away to satisfy the
+    trailing lookahead -- which silently produced a *wrong* label, the one
+    outcome this parser exists to avoid.
+    """
+    assert key_from_name("EP1_Chord3_F#Maj7.wav") == (6, True)
+
+
 def test_conflicting_keys_are_refused():
     assert key_from_name("Cm_to_Gm_transition.wav") is None
