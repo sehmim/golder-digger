@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config, db, essentia_runner, features, mock
+from . import config, db, essentia_runner, features, filename, mock
 
 _clap = None
 
@@ -60,6 +60,34 @@ def _role_or_tags(role, role_source, tags) -> tuple[str | None, str]:
         return role, role_source
     inferred = features.role_from_tags(tags)
     return (inferred, "clap") if inferred else (None, "unknown")
+
+
+def _apply_filename(path, row: dict) -> None:
+    """Fold what the filename claims into a row, recording which side won.
+
+    Applied to both branches on purpose: mock mode is only worth having if it
+    runs the same code, and this path is reachable with no model loaded at all.
+
+    The stored confidence always describes the stored value -- a tempo taken
+    from the filename carries the filename's certainty, not the confidence of
+    the beat tracker that failed to find one.
+    """
+    name = str(path)
+    bpm, bpm_c = filename.parse_bpm(name)
+    row["bpm"], row["bpm_source"], row["tempo_confidence"] = filename.resolve(
+        row["bpm"], row["tempo_confidence"] or 0.0, bpm, bpm_c)
+
+    pc, is_major, key_c = filename.parse_key(name)
+    if pc is not None and key_c >= (row["key_confidence"] or 0.0):
+        row["tonic_pc"] = pc
+        # a name like "G#" states a root and no mode; the estimate keeps the
+        # half the filename was silent about rather than being discarded whole
+        if is_major is not None:
+            row["is_major"] = int(is_major)
+        row["key_confidence"] = key_c
+        row["key_source"] = "filename"
+    else:
+        row["key_source"] = "audio"
 
 
 def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
@@ -114,6 +142,8 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
                 role=r, role_source=src, tonalness=tonal, tempo_confidence=tconf,
                 spectral=mock.spectral(cid), tags=tags,
                 chroma=ch, clap=mock.clap(cid), synthetic=1))
+        for r in rows:
+            _apply_filename(path, r)
         return rows
 
     y, sr = features.load_audio(path)
@@ -153,6 +183,7 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
         row["clap"] = vec
         row["tags"] = tags
         row["role"], row["role_source"] = _role_or_tags(role, role_source, tags)
+        _apply_filename(path, row)
     return rows
 
 
@@ -243,18 +274,21 @@ def upsert(conn, rows):
         """INSERT INTO chunks (chunk_id, path, file_hash, chunk_index, t_start, t_end,
                                bpm, beats_per_bar, tonic_pc, is_major, key_confidence,
                                role, role_source, chroma, clap,
-                               tempo_confidence, tonalness, spectral, tags, synthetic)
+                               tempo_confidence, tonalness, spectral, tags, synthetic,
+                               bpm_source, key_source)
            VALUES (:chunk_id,:path,:file_hash,:chunk_index,:t_start,:t_end,:bpm,
                    :beats_per_bar,:tonic_pc,:is_major,:key_confidence,:role,
                    :role_source,:chroma,:clap,
-                   :tempo_confidence,:tonalness,:spectral,:tags,:synthetic)
+                   :tempo_confidence,:tonalness,:spectral,:tags,:synthetic,
+                   :bpm_source,:key_source)
            ON CONFLICT(chunk_id) DO UPDATE SET
              bpm=excluded.bpm, tonic_pc=excluded.tonic_pc, is_major=excluded.is_major,
              key_confidence=excluded.key_confidence, role=excluded.role,
              role_source=excluded.role_source, chroma=excluded.chroma,
              clap=excluded.clap, tempo_confidence=excluded.tempo_confidence,
              tonalness=excluded.tonalness, spectral=excluded.spectral,
-             tags=excluded.tags, synthetic=excluded.synthetic""",
+             tags=excluded.tags, synthetic=excluded.synthetic,
+             bpm_source=excluded.bpm_source, key_source=excluded.key_source""",
         [{**r,
           "chroma": db.to_blob(r["chroma"]),
           "clap": db.to_blob(r["clap"]),
