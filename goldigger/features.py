@@ -110,7 +110,13 @@ def chunk_boundaries(duration: float, rhythm: dict) -> list[tuple[float, float]]
     for i in range(0, len(downbeats) - 1, step):
         start = float(downbeats[i])
         j = min(i + step, len(downbeats) - 1)
-        end = float(downbeats[j])
+        end = min(float(downbeats[j]), duration)
+        # The grid is not evidence about the file's length: a tracker can run
+        # past the end of a short file, and mock's invented one routinely does.
+        # A span outside the audio is a chunk that cannot be loaded, and the
+        # failure surfaces much later as an unexplained seek error at preview.
+        if start >= duration:
+            break
         if end - start >= 0.5:
             spans.append((start, end))
     if not spans:  # downbeats present but unusable

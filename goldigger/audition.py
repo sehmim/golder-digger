@@ -64,10 +64,39 @@ def stretch_rate(src_bpm: float | None, target_bpm: float | None) -> tuple[float
     return float(best), float(src_bpm * best)
 
 
+class ChunkOutsideAudio(Exception):
+    """A stored span that is not inside the file it names.
+
+    Carries both numbers, because the only useful next question is which of the
+    two is wrong: chunk grids written under mock came from an invented beat grid
+    that took no account of the file's length, and a file replaced in place can
+    simply be shorter than the spans already stored against it.
+    """
+
+    def __init__(self, path: str, t_start: float, duration: float):
+        self.path, self.t_start, self.duration = path, t_start, duration
+        super().__init__(f"chunk starts at {t_start:.2f}s but {path} is only "
+                         f"{duration:.2f}s long")
+
+
 def load_chunk(path: str, t_start: float, t_end: float, sr: int | None = None):
+    """The span, clamped to what the file actually holds.
+
+    Without the clamp librosa's seek raises `LibsndfileError: Internal
+    psf_fseek() failed` from inside soundfile, which reaches the desktop as a
+    bare "500 could not render <chunk_id>" -- naming neither the file nor the
+    reason. A span that merely overruns the end is playable and is trimmed; one
+    that begins past the end has no audio at all and is named instead.
+    """
     import librosa
+    import soundfile as sf
+
+    duration = float(sf.info(path).duration)
+    if t_start >= duration:
+        raise ChunkOutsideAudio(path, t_start, duration)
+
     y, sr = librosa.load(path, sr=sr, mono=True,
-                         offset=t_start, duration=max(0.05, t_end - t_start))
+                         offset=t_start, duration=max(0.05, min(t_end, duration) - t_start))
     return y, sr
 
 
@@ -165,7 +194,13 @@ def _render_context_cached(keys: tuple[tuple, ...], target_bpm: float | None, sr
     """Build the reusable session bed once instead of once per candidate."""
     bed = np.zeros(0, dtype=np.float32)
     for key in keys:
-        part, _actual_sr, _rate, _effective = _render_cached(key, target_bpm, sr)
+        try:
+            part, _actual_sr, _rate, _effective = _render_cached(key, target_bpm, sr)
+        except ChunkOutsideAudio:
+            # The bed is a mix of several chunks and survives losing one. Failing
+            # the whole preview would let a single unplayable context chunk make
+            # every candidate in the session unauditionable.
+            continue
         bed = part if not len(bed) else mix(bed, part)
     bed.setflags(write=False)
     return bed

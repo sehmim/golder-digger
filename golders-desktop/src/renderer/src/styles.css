@@ -576,7 +576,7 @@ button:focus-visible {
 }
 
 .set-name {
-  margin: 0 0 4px;
+  margin: 20px 14px;
   font-size: 16px;
   font-weight: 640;
   letter-spacing: -0.02em;
@@ -1052,6 +1052,7 @@ button:focus-visible {
 .audition-mode {
   display: flex;
   gap: 2px;
+  color: black;
   margin: 0 0 14px;
   padding: 2px;
   border-radius: 7px;

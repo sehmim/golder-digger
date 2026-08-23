@@ -7,7 +7,7 @@ import json
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from . import ableton, audition, config, db, essentia_runner, ingest, listening, scoring
@@ -74,6 +74,19 @@ class EssentiaReq(BaseModel):
 
 
 # ---------------------------------------------------------------- routes
+
+@app.exception_handler(audition.ChunkOutsideAudio)
+def _chunk_outside_audio(request, exc: audition.ChunkOutsideAudio):
+    """410, not 500: the row is wrong about the file, and the fix is a re-ingest.
+
+    Raised from inside the render, so it is handled here rather than at each of
+    the two audio routes -- and the desktop shows the message instead of a bare
+    "500 could not render <chunk_id>".
+    """
+    return JSONResponse(status_code=410,
+                        content={"detail": f"{exc} -- re-ingest the folder to rebuild"
+                                           " its chunks"})
+
 
 @app.get("/health")
 def health():

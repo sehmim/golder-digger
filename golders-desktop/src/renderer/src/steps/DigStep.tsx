@@ -127,14 +127,11 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
     <section className="dig">
       <div className="pedal">
         <header className="pedal-head">
-          <p className="eyebrow">Digging against</p>
           <p className="set-name">{set.session.name}</p>
           <p className="set-meta">
-            {set.context_ids.length} context {set.context_ids.length === 1 ? 'chunk' : 'chunks'}
             {set.session.tempo ? ` · ${set.session.tempo} BPM` : ''}
             {set.session.key ? ` · ${set.session.key}` : ''}
           </p>
-          {result ? <p className="set-meta set-meta--soft">{anchorLine(result)}</p> : null}
         </header>
 
         <Knob label="Distance" value={notch} onChange={setNotch} />
@@ -143,14 +140,6 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
         <p className="knob-caption">{CAPTIONS[notch - MIN]}</p>
 
         <div className="results" data-working={working || undefined}>
-          <div className="results-head">
-            <span>
-              {results.length} {results.length === 1 ? 'find' : 'finds'}
-            </span>
-            <span>
-              {result ? `fit floor ${result.fit_floor} · ${result.corpus_size} chunks` : 'ranking'}
-            </span>
-          </div>
 
           <div className="audition-mode">
             <button
