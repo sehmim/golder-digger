@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { baseName } from '../../application/api'
 import type { AnalyzeResult, Candidate } from '../../application/api'
 import Waveform from '../../shared/components/Waveform'
@@ -42,8 +43,26 @@ export default function GoldenResults({
 }: GoldenResultsProps): React.JSX.Element {
   const files = state.status === 'ready' ? uniqueFiles(state.result.results) : []
 
+  // Escape closes. The × can be reached by mouse, but a modal that only exits
+  // through one 44px target has no way out the moment anything covers it.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onBack])
+
   return (
-    <section className="golden-results" aria-label="Ranked sounds">
+    <section
+      className="golden-results"
+      aria-label="Ranked sounds"
+      onClick={(event) => {
+        // Only the backdrop itself -- a click that started on a waveform or a
+        // mode button bubbles here and must not be read as "dismiss".
+        if (event.target === event.currentTarget) onBack()
+      }}
+    >
       <button
         type="button"
         className="golden-results__close"

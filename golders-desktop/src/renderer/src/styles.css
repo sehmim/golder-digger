@@ -2076,6 +2076,10 @@ button:focus-visible {
 
 .golden-results__close {
   position: absolute;
+  /* Above the body: the close button comes first in the DOM, so without this a
+     results list tall enough to overflow paints over it and eats the click --
+     which leaves the overlay with no way out at all. */
+  z-index: 2;
   top: 52px;
   right: 48px;
   display: grid;
@@ -2103,16 +2107,22 @@ button:focus-visible {
 }
 
 .golden-results__body {
-  display: grid;
+  /* Flex column, not centred grid: a centred grid item taller than its track
+     overflows *both* ways, so a long list grew upward over the close button
+     instead of scrolling. `min-height: 0` is what lets the list scroll here. */
+  display: flex;
   width: 100%;
   min-height: 0;
-  place-items: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
 
 .golden-results__list {
   width: fit-content;
   max-width: 100%;
-  max-height: 100%;
+  min-height: 0;
   margin: 0 auto;
   padding: 0;
   border: 0;
