@@ -281,7 +281,7 @@ def run_job(conn, job_id: str, root, out_path=None) -> None:
     background task, and "no essentia and no docker on this machine" is a
     condition the UI has to show, not a crash.
     """
-    out_path = Path(out_path or (config.ROOT / "essentia.json"))
+    out_path = Path(out_path or (config.DATA_DIR / "essentia.json"))
     now = dt.datetime.now(dt.UTC).isoformat()
     conn.execute(
         "UPDATE jobs SET state='running', total=1, done=0, message=?, started_at=?"

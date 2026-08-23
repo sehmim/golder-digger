@@ -3,3 +3,7 @@ out/
 release/
 .DS_Store
 *.log
+
+# the assembled engine the DMG ships -- gigabytes of interpreter, site-packages
+# and optionally model weights, rebuilt by scripts/package-engine.sh
+resources/engine/

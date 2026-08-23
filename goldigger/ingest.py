@@ -610,7 +610,7 @@ def run_job(conn, job_id: str, roots, on_corpus_ready=None):
             if not Path(root).expanduser().is_dir():
                 continue        # the container pass takes a directory, not a file
             try:
-                out = essentia_runner.run(root, config.ROOT / "essentia.json")
+                out = essentia_runner.run(root, config.DATA_DIR / "essentia.json")
                 essentia_runner.merge(conn, essentia_runner.load(out), root)
             except Exception:
                 pass            # recorded by the standalone pass; never fails an ingest

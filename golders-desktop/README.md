@@ -95,3 +95,28 @@ npm run build                        # Production bundles
 npm run package                      # Unpacked application
 npm run dist                         # Installer
 ```
+
+## Packaging a macOS DMG
+
+The app is only half the product — the DMG must also carry the Python engine,
+or it is a shell that spawns nothing on any machine without this repo checkout.
+
+```bash
+./scripts/package-engine.sh            # assemble resources/engine (~1-2 GB)
+./scripts/package-engine.sh --models   # …and bake the CLAP weights in
+npm run dist                           # DMG in release/
+```
+
+What the packaged app does differently (all in `src/main/api.ts`):
+
+- spawns `Resources/engine/python/bin/python3` instead of the repo venv
+- sets `GOLDDIGGER_DATA` to Electron's userData directory, because the bundle
+  is read-only — the database and job artifacts land there
+- points `HF_HOME` at bundled weights when the engine was built with `--models`;
+  without them, CLAP downloads on first run and beat-this fetches its
+  checkpoint either way
+
+The DMG is **unsigned**: a downloaded copy needs right-click → Open the first
+time, or a Developer ID certificate plus notarization to skip that. Signing the
+engine's dylibs (torch needs `disable-library-validation`) is part of that
+errand, not this script.

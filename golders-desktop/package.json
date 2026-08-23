@@ -37,6 +37,12 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/engine",
+        "to": "engine"
+      }
+    ],
     "mac": {
       "target": "dmg",
       "category": "public.app-category.music"

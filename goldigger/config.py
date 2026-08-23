@@ -1,8 +1,14 @@
 """Every tunable in one place. The scoring constants are guesses to tune by ear."""
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT / "golddigger.db"
+
+# Where the engine may write: the database and job artifacts. The repo checkout
+# is the development default; a packaged app runs from a read-only bundle, so
+# Electron points this at its userData directory instead.
+DATA_DIR = Path(os.getenv("GOLDDIGGER_DATA", str(ROOT))).expanduser()
+DB_PATH = Path(os.getenv("GOLDDIGGER_DB", str(DATA_DIR / "golddigger.db"))).expanduser()
 
 # --- audio ---
 SR = 22050                  # analysis rate
@@ -122,7 +128,6 @@ TONALNESS_GAIN = 4.0        # tonalness is small even for clear keys; rescale
 # --- mock mode ---
 # GOLDDIGGER_MOCK=1 skips beat-this and CLAP entirely and synthesizes deterministic
 # features from the file hash. Lets the whole pipeline + API run with no models.
-import os
 MOCK = os.getenv("GOLDDIGGER_MOCK", "1") == "1"
 
 # --- ingest ---

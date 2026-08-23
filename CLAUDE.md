@@ -147,9 +147,12 @@ The existing code is written a particular way, and new code should match it:
 
 ## Gotchas
 
-- `config.DB_PATH` is `<repo>/golddigger.db` — a dev-time choice. A packaged app needs
-  `app.getPath('userData')`, and the spawn in `src/main/api.ts` assumes the repo
-  checkout is the app's parent directory.
+- `config.DB_PATH` defaults to `<repo>/golddigger.db`; `GOLDDIGGER_DATA` (or
+  `GOLDDIGGER_DB`) points the engine's writes elsewhere. The dev spawn in
+  `src/main/api.ts` still assumes the repo checkout is the app's parent directory,
+  but a packaged app spawns the self-contained engine in `Resources/engine`
+  (assembled by `golders-desktop/scripts/package-engine.sh`, see the desktop
+  README) and writes to `userData` via `GOLDDIGGER_DATA`.
 - `src/main/api.ts` **reuses an already-listening server on :8420** rather than
   spawning a second one. A stale `golddigger serve` from an earlier session used to be
   adopted silently and 404 every route added since it started; `start()` now checks

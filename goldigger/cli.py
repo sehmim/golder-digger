@@ -120,7 +120,7 @@ def main():
                 print(json.dumps({"fit_floor": floor, "results": results}, indent=2))
 
     elif args.cmd == "essentia":
-        out = args.out or (config.ROOT / "essentia.json")
+        out = args.out or (config.DATA_DIR / "essentia.json")
         essentia_runner.run(args.root, out)
         records = essentia_runner.load(out)
         merged = essentia_runner.merge(conn, records, args.root)

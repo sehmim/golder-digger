@@ -19,3 +19,6 @@ soundbank/*
 essentia.json
 
 .DS_Store
+
+# setuptools wheel-build debris from package-engine.sh installing the repo
+build/

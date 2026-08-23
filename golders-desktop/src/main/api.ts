@@ -5,7 +5,7 @@
  */
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { app } from 'electron'
 
@@ -150,8 +150,22 @@ function repoRoot(): string {
   return process.env.GOLDDIGGER_ROOT || resolve(app.getAppPath(), '..')
 }
 
+/**
+ * A packaged app carries its own engine in Resources/engine: a relocatable
+ * Python with the goldigger package installed into its site-packages, assembled
+ * by scripts/package-engine.sh. Null in development, where the repo venv is
+ * the engine.
+ */
+function packagedPython(): string | null {
+  if (!app.isPackaged) return null
+  const python = join(process.resourcesPath, 'engine', 'python', 'bin', 'python3')
+  return existsSync(python) ? python : null
+}
+
 function pythonBin(): string {
   if (process.env.GOLDDIGGER_PYTHON) return process.env.GOLDDIGGER_PYTHON
+  const packaged = packagedPython()
+  if (packaged) return packaged
   const venv = join(repoRoot(), '.venv', 'bin', 'python3')
   return existsSync(venv) ? venv : 'python3'
 }
@@ -200,14 +214,23 @@ export async function start(): Promise<void> {
     }
 
     const bin = pythonBin()
+    // Packaged, the bundle is read-only: the engine writes its database and job
+    // artifacts to userData (GOLDDIGGER_DATA), and reads bundled model weights
+    // when the engine was assembled with --models.
+    const packaged = packagedPython() !== null
+    const dataDir = app.getPath('userData')
+    if (packaged) mkdirSync(dataDir, { recursive: true })
+    const models = join(process.resourcesPath, 'engine', 'models')
     child = spawn(bin, ['-m', 'uvicorn', 'goldigger.api:app', '--host', HOST, '--port', String(PORT)], {
-      cwd: repoRoot(),
+      cwd: packaged ? dataDir : repoRoot(),
       env: {
         // The engine defaults to mock because the test suite and the CLI want it
         // to. The app is the product: under mock the CLAP vector is synthesized
         // from the file hash, so "sounds like" — the entire DISTANCE dial — means
         // nothing. GOLDDIGGER_MOCK in the environment still wins, for debugging.
         GOLDDIGGER_MOCK: '0',
+        ...(packaged ? { GOLDDIGGER_DATA: dataDir } : {}),
+        ...(packaged && existsSync(models) ? { HF_HOME: models } : {}),
         ...process.env,
         PYTHONUNBUFFERED: '1'
       },
