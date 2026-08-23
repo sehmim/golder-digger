@@ -34,7 +34,10 @@ function meta(job: IngestJob): string {
   }
 
   const failed = job.failed > 0 ? `, ${job.failed} failed` : ''
-  return `${job.done} samples ingested${failed}`
+  // A finished job carries a footnote when it repaired rows instead of
+  // re-extracting them -- otherwise a skipped folder and a repaired one read the same.
+  const repairs = job.currentFile ? ` · ${job.currentFile}` : ''
+  return `${job.done} samples ingested${failed}${repairs}`
 }
 
 /** Essentia coverage in one line, in the terms the button is offering. */

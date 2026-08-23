@@ -6,8 +6,9 @@
 # so starting the backend here keeps both sets of logs in one place and makes a
 # stale server obvious instead of silent.
 #
-#   ./start.sh                 both, mock features (default)
-#   ./start.sh --real          both, real extractors (beat-this + CLAP)
+#   ./start.sh                 both, real extractors (beat-this + CLAP)
+#   ./start.sh --mock          both, synthesized features -- fast, but the
+#                              DISTANCE dial is then ranking noise
 #   ./start.sh --backend       API only, in the foreground
 #   ./start.sh --frontend      Electron only, against whatever is on the port
 #   ./start.sh --restart       replace an API already listening on the port
@@ -22,7 +23,10 @@ LOG_DIR="$ROOT/.logs"
 LOG="$LOG_DIR/api.log"
 
 PORT=8420
-MOCK=1
+# The engine's own default is mock, for the test suite and the CLI. Running the
+# app means wanting answers, and under mock the CLAP vector -- the whole basis of
+# "sounds like" -- is synthesized from the file hash.
+MOCK=0
 RUN_BACKEND=1
 RUN_FRONTEND=1
 RESTART=0
@@ -30,12 +34,13 @@ BOOT_TIMEOUT=90
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --real)     MOCK=0 ;;
+    --mock)     MOCK=1 ;;
+    --real)     MOCK=0 ;;      # kept: it was the default's opposite
     --backend)  RUN_FRONTEND=0 ;;
     --frontend) RUN_BACKEND=0 ;;
     --restart)  RESTART=1 ;;
     --port)     PORT="${2:?--port needs a number}"; shift ;;
-    -h|--help)  sed -n '3,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)  sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)          echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift

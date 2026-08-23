@@ -40,6 +40,42 @@ function distanceOf(notch: number): number {
   return ((notch - MIN) / (MAX - MIN)) * 100
 }
 
+/** Where Fit's tempo and key came from -- Live's own numbers, or the samples.
+ *
+ * Worth a line of its own: the two answers differ whenever a set's resolved
+ * samples are one-shots, and a producer reading a bad match deserves to know
+ * which tempo it was matched against.
+ */
+function anchorLine(result: AnalyzeResult): string {
+  const anchored = new Set(result.session_context)
+  const bpm = result.context.bpm ? `${Math.round(result.context.bpm)} BPM` : 'no tempo'
+  const key = result.context.tonic ?? 'no key'
+  const from = (field: 'bpm' | 'tonic'): string => (anchored.has(field) ? 'from Live' : 'from samples')
+  return `matching against ${bpm} (${from('bpm')}) · ${key} (${from('tonic')})`
+}
+
+/** Why the dial is not a measurement yet, in terms of this corpus.
+ *
+ * Phrased off the counts rather than off a mode flag: the engine can be running
+ * real extraction while the rows it ranks were written under mock, which is the
+ * normal state of a library part-way through being re-ingested. Novelty is a
+ * percentile across the whole corpus, so synthesized vectors move the numbers
+ * for the measured chunks too.
+ */
+function syntheticWarning(result: AnalyzeResult): string {
+  const { synthetic_chunks: bad, corpus_size: all } = result
+  const scope =
+    bad >= all
+      ? 'Every chunk in your library was'
+      : `${bad} of your ${all} chunks were`
+  return (
+    `${scope} ingested before real extraction, so their “sounds like” vector is ` +
+    'synthesized from the file hash. Keys and tempos are real; the distances are not ' +
+    'measurements. Add those folders again to replace them — they will be re-analysed, ' +
+    'not skipped.'
+  )
+}
+
 function meta(candidate: Candidate): string {
   const parts = [`fit ${candidate.fit.toFixed(2)}`, `novelty ${Math.round(candidate.novelty * 100)}`]
   if (candidate.bpm) parts.push(`${candidate.bpm} BPM`)
@@ -63,7 +99,9 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
 
     const timer = setTimeout(() => {
       void window.desktop
-        .analyze(set.context_ids, distanceOf(notch), RESULT_COUNT)
+        // The set's own path, so the engine anchors tempo and key on what Live
+        // declares rather than on whichever samples happened to resolve.
+        .analyze(set.context_ids, distanceOf(notch), RESULT_COUNT, set.session.path)
         .then((next) => {
           if (generation.current !== mine) return
           setResult(next)
@@ -79,7 +117,7 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
     }, SETTLE_MS)
 
     return () => clearTimeout(timer)
-  }, [notch, set.context_ids])
+  }, [notch, set.context_ids, set.session.path])
 
   const results = result?.results ?? []
 
@@ -94,6 +132,7 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
             {set.session.tempo ? ` · ${set.session.tempo} BPM` : ''}
             {set.session.key ? ` · ${set.session.key}` : ''}
           </p>
+          {result ? <p className="set-meta set-meta--soft">{anchorLine(result)}</p> : null}
         </header>
 
         <Knob label="Distance" value={notch} onChange={setNotch} />
@@ -165,6 +204,10 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
 
           {!working && results.length === 0 ? (
             <p className="hint">Nothing cleared the fit gate. Ingest more of your library.</p>
+          ) : null}
+
+          {result?.synthetic_novelty ? (
+            <p className="hint hint--warn">{syntheticWarning(result)}</p>
           ) : null}
         </div>
       </div>

@@ -57,6 +57,8 @@ class AnalyzeReq(BaseModel):
     distance: float = Field(50, ge=0, le=100,
                             description="target novelty percentile, not a threshold")
     k: int = Field(config.DEFAULT_K, ge=1, le=100)
+    session_path: str | None = Field(
+        None, description="the .als these chunks came from; anchors tempo and key")
 
 
 class TagReq(BaseModel):
@@ -77,6 +79,7 @@ class EssentiaReq(BaseModel):
 def health():
     c = state["corpus"]
     return {"ok": True, "mock": config.MOCK, "chunks": len(c) if c else 0,
+            "synthetic_chunks": int(c.synthetic.sum()) if c else 0,
             "db": str(config.DB_PATH),
             # how ingest will characterise files, before anything is ingested
             "essentia": essentia_runner.runner_mode() if config.ESSENTIA_ON_INGEST else None}
@@ -173,6 +176,25 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
     return {"total": total, "count": len(rows), "chunks": rows}
 
 
+def _load_als_cached(path: str) -> dict:
+    """The set behind the dial, reparsed only when the file changes.
+
+    A knob sweep asks for the same set several times a second and a large project
+    is tens of milliseconds of XML each time. One entry is enough: the app digs
+    against one set at a time.
+    """
+    if not os.path.isfile(path):
+        raise HTTPException(404, f"no such file: {path}")
+    stamp = (path, os.path.getmtime(path))
+    if state.get("als_stamp") != stamp:
+        try:
+            state["als"] = ableton.load_als(path)
+        except ableton.UnreadableSet as exc:
+            raise HTTPException(400, str(exc))
+        state["als_stamp"] = stamp
+    return state["als"]
+
+
 @app.post("/session/analyze")
 def analyze(req: AnalyzeReq):
     corpus = _corpus()
@@ -180,9 +202,27 @@ def analyze(req: AnalyzeReq):
         ctx = scoring.build_context(corpus, req.context_ids)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+    # What Live states outright beats what the resolved chunks imply: a set at
+    # 174 whose only matched samples are two 87 BPM one-shots is still at 174,
+    # and inferring the context from that accident is how Fit's rhythm term ends
+    # up scoring against the wrong tempo.
+    applied = ableton.apply_session_context(
+        ctx, _load_als_cached(req.session_path)) if req.session_path else []
+
     results, floor = scoring.select(corpus, ctx, req.distance, req.k)
     return {"distance": req.distance, "fit_floor": round(floor, 3),
-            "corpus_size": len(corpus), "count": len(results), "results": results}
+            "corpus_size": len(corpus), "count": len(results), "results": results,
+            "session_context": applied,
+            "context": {"bpm": ctx["bpm"],
+                        "tonic": (config.PITCH_NAMES[ctx["tonic"]]
+                                  if ctx["tonic"] >= 0 else None),
+                        "roles": sorted(ctx["roles"])},
+            # Read off the corpus, not off config.MOCK: what matters is how the
+            # rows being ranked were written, and a library ingested under mock
+            # stays fiction long after the flag is turned off.
+            "synthetic_novelty": bool(corpus.synthetic.any()),
+            "synthetic_chunks": int(corpus.synthetic.sum())}
 
 
 def _session_key(als: dict) -> str | None:
@@ -315,6 +355,13 @@ def _chunk_row(chunk_id: str):
         (chunk_id,)).fetchone()
     if not row:
         raise HTTPException(404, f"no such chunk: {chunk_id}")
+    # A row can outlive its file: a folder moved while its drive was unmounted,
+    # or a delete no walk has passed over since. Named here because the loader
+    # raising through the handler reaches the desktop as a bare "500 Internal
+    # Server Error", which says nothing about which file or why.
+    if not os.path.isfile(row["path"]):
+        raise HTTPException(410, f"the file this chunk came from is gone: {row['path']}"
+                                 " -- re-ingest the folder to relink it")
     return row
 
 

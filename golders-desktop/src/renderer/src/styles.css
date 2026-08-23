@@ -248,6 +248,19 @@ button:focus-visible {
   font-size: 12px;
 }
 
+/* A caveat about the numbers themselves, not an error: the results are real,
+   what they are ranked by is not. */
+.hint--warn {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--gold);
+  border-radius: 0 6px 6px 0;
+  background: rgb(167 123 23 / 7%);
+  color: var(--ink-soft);
+  line-height: 1.5;
+  text-align: left;
+}
+
 .error {
   margin: 14px 0 0;
   color: #a3402a;

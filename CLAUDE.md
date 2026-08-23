@@ -78,8 +78,17 @@ writes to SQLite is unchanged and single-threaded — the connection never leave
 job's thread. A test that stubs `extract_one` must set `INGEST_WORKERS = 1`; a
 monkeypatch does not cross a process boundary.
 
-Build and test against mock. Set `GOLDDIGGER_MOCK=0` only when deliberately exercising
-the real extractors — the first call loads torch and takes minutes.
+Build and test against mock. **The app is not mock**: `start.sh` and the Electron spawn
+both set `GOLDDIGGER_MOCK=0`, because under mock the CLAP vector is synthesized from the
+file hash and "sounds like" — the entire DISTANCE dial — means nothing. `./start.sh
+--mock` opts back out. Loading torch costs ~19s once; after that a short sample is
+~0.3s.
+
+`chunks.synthetic` records which kind of vector each row carries (1 mock, 0 measured,
+NULL predates the column and is treated as untrusted). Ingest's dedupe reads it: a real
+run re-does a file whose vectors were synthesized, or switching the flag off would be a
+silent no-op. `/health` and `/session/analyze` report the count so the UI can say the
+dial is not a measurement.
 
 ## Architecture in one pass
 

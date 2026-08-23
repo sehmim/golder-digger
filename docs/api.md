@@ -75,14 +75,27 @@ not a readable `.als`.
 Note this route hashes every referenced file that exists on disk — see `ableton.md`.
 
 ### `POST /session/analyze`
-`{context_ids[], distance, k}` → `{distance, fit_floor, corpus_size, count, results[]}`.
+`{context_ids[], distance, k, session_path?}` → `{distance, fit_floor, corpus_size,
+count, results[], session_context[], context{}, synthetic_novelty, synthetic_chunks}`.
 Each result carries `fit`, `novelty`, `components{H,R,P}`, plus `role_source` and the
-chunk's top three `tags`. **400** if no supplied id is known to the corpus, **409** if
-the corpus is empty.
+chunk's top three `tags`. **400** if no supplied id is known to the corpus, **404** if
+`session_path` names no file, **409** if the corpus is empty.
 
-Unlike `golddigger als --analyze`, this route does **not** call
-`ableton.apply_session_context` — the CLI leans on Live's declared tempo and key, the
-API does not.
+`session_path` is the `.als` these chunks came from. Given one, the route calls
+`ableton.apply_session_context` exactly as `golddigger als --analyze` does, and
+`session_context` lists the fields Live actually overrode (`bpm`, `tonic`). Without it
+the context is inferred from whichever samples resolved — which is the accident the
+set's own header exists to settle. The parse is cached per (path, mtime): a knob sweep
+is several requests against one unchanged file.
+
+`context` is what Fit was actually matched against, so a UI can say "124 BPM, from
+Live" rather than leaving the user to guess.
+
+`synthetic_novelty` is true when any ranked chunk's CLAP vector was synthesized from
+its file hash (mock mode) or predates the `chunks.synthetic` column. Novelty is a
+distance in that space, so the flag is the difference between a measurement and
+arithmetic over noise. Read off the corpus, not off `config.MOCK`: a library ingested
+under mock stays fiction long after the flag is turned off.
 
 `fit_floor` is the floor *actually used* after relaxation, not the configured one.
 

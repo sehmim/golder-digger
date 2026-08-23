@@ -8,8 +8,8 @@ contextBridge.exposeInMainWorld('desktop', {
   apiStatus: () => ipcRenderer.invoke('api:status'),
   startIngest: (roots: string[]): Promise<string> => ipcRenderer.invoke('ingest:start', roots),
   loadSet: (path: string) => ipcRenderer.invoke('session:load', path),
-  analyze: (contextIds: string[], distance: number, k: number) =>
-    ipcRenderer.invoke('session:analyze', contextIds, distance, k),
+  analyze: (contextIds: string[], distance: number, k: number, sessionPath?: string | null) =>
+    ipcRenderer.invoke('session:analyze', contextIds, distance, k, sessionPath ?? null),
   startEssentia: (root: string): Promise<string> => ipcRenderer.invoke('essentia:start', root),
   essentiaSummary: () => ipcRenderer.invoke('essentia:summary'),
   chunkAudio: (chunkId: string): Promise<ArrayBuffer> =>

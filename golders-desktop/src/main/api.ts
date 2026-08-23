@@ -87,6 +87,13 @@ export interface AnalyzeResult {
   corpus_size: number
   count: number
   results: Candidate[]
+  /** Context fields Live stated outright and the engine took over the inferred ones. */
+  session_context: ('bpm' | 'tonic')[]
+  context: { bpm: number | null; tonic: string | null; roles: string[] }
+  /** True when any ranked chunk's CLAP vector was synthesized from its file hash. */
+  synthetic_novelty: boolean
+  /** How many of `corpus_size` those are — the dial is skewed in proportion. */
+  synthetic_chunks: number
 }
 
 export interface SessionSet {
@@ -127,7 +134,7 @@ function pythonBin(): string {
  * over from an earlier session gets used silently and then 404s every route
  * added since it started. Checking one field turns that into a message.
  */
-const HEALTH_MARKER = 'essentia'
+const HEALTH_MARKER = 'synthetic_chunks'
 
 async function healthBody(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
   try {
@@ -166,7 +173,15 @@ export async function start(): Promise<void> {
     const bin = pythonBin()
     child = spawn(bin, ['-m', 'uvicorn', 'goldigger.api:app', '--host', HOST, '--port', String(PORT)], {
       cwd: repoRoot(),
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      env: {
+        // The engine defaults to mock because the test suite and the CLI want it
+        // to. The app is the product: under mock the CLAP vector is synthesized
+        // from the file hash, so "sounds like" — the entire DISTANCE dial — means
+        // nothing. GOLDDIGGER_MOCK in the environment still wins, for debugging.
+        GOLDDIGGER_MOCK: '0',
+        ...process.env,
+        PYTHONUNBUFFERED: '1'
+      },
       stdio: ['ignore', 'pipe', 'pipe']
     })
 
@@ -243,10 +258,11 @@ export function loadSet(path: string): Promise<SessionSet> {
   return request('/session/als', { method: 'POST', body: JSON.stringify({ path }) })
 }
 
-export function analyze(contextIds: string[], distance: number, k: number): Promise<AnalyzeResult> {
+export function analyze(contextIds: string[], distance: number, k: number,
+                       sessionPath?: string | null): Promise<AnalyzeResult> {
   return request('/session/analyze', {
     method: 'POST',
-    body: JSON.stringify({ context_ids: contextIds, distance, k })
+    body: JSON.stringify({ context_ids: contextIds, distance, k, session_path: sessionPath ?? null })
   })
 }
 

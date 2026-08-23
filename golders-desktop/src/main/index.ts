@@ -120,8 +120,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'session:analyze',
-    (_event, contextIds: string[], distance: number, k: number) =>
-      api.analyze(contextIds, distance, k)
+    (_event, contextIds: string[], distance: number, k: number, sessionPath: string | null) =>
+      api.analyze(contextIds, distance, k, sessionPath)
   )
 
   createWindow()

@@ -79,6 +79,13 @@ export interface AnalyzeResult {
   corpus_size: number
   count: number
   results: Candidate[]
+  /** Context fields Live stated outright and the engine took over the inferred ones. */
+  session_context: ('bpm' | 'tonic')[]
+  context: { bpm: number | null; tonic: string | null; roles: string[] }
+  /** True when any ranked chunk's CLAP vector was synthesized from its file hash. */
+  synthetic_novelty: boolean
+  /** How many of `corpus_size` those are — the dial is skewed in proportion. */
+  synthetic_chunks: number
 }
 
 export interface SessionSet {

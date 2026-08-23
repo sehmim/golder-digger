@@ -31,6 +31,10 @@ class Corpus:
         self.kconf = np.zeros(n, dtype=np.float32)
         self.roles = [None] * n
         self.hashes = [None] * n
+        # False for a measured CLAP vector, True for a synthesized or unknown one.
+        # Novelty is a distance in this space, so a corpus with any of these in it
+        # cannot report the dial as a measurement.
+        self.synthetic = np.zeros(n, dtype=bool)
 
     def __len__(self):
         return len(self.rows)
