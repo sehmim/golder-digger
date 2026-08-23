@@ -108,6 +108,12 @@ TONALNESS_GAIN = 4.0        # tonalness is small even for clear keys; rescale
 import os
 MOCK = os.getenv("GOLDDIGGER_MOCK", "1") == "1"
 
+# --- ingest ---
+# Essentia holds the GIL for the whole of MusicExtractor, so a thread pool buys
+# nothing: four stems measured 72.5s serial, 71.8s on four threads, 20.0s on
+# four processes. The ingest pool is therefore processes, one file each.
+INGEST_WORKERS = int(os.getenv("GOLDDIGGER_WORKERS", "0")) or max(1, (os.cpu_count() or 2) - 1)
+
 # --- essentia ---
 # Run the second-opinion extractor as part of ingest rather than as a separate
 # pass. On by default: it needs no models, and in mock mode it is the only real

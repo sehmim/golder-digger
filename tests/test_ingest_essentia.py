@@ -29,6 +29,9 @@ def library(tmp_path):
 
 def run(conn, root, monkeypatch, record):
     monkeypatch.setattr(config, "ESSENTIA_ON_INGEST", True)
+    # One worker, so the stub below is the extractor that actually runs: ingest
+    # spreads Essentia over processes, and a monkeypatch does not cross one.
+    monkeypatch.setattr(config, "INGEST_WORKERS", 1)
     monkeypatch.setattr(essentia_runner, "essentia_available_natively", lambda: True)
     monkeypatch.setattr(essentia_runner, "extract_one", lambda path: record)
     job = ingest.new_job(conn, str(root))
@@ -75,6 +78,7 @@ def test_a_failing_extractor_does_not_fail_the_ingest(library, monkeypatch):
         raise RuntimeError("essentia fell over")
 
     monkeypatch.setattr(config, "ESSENTIA_ON_INGEST", True)
+    monkeypatch.setattr(config, "INGEST_WORKERS", 1)
     monkeypatch.setattr(essentia_runner, "essentia_available_natively", lambda: True)
     monkeypatch.setattr(essentia_runner, "extract_one", boom)
     job = ingest.new_job(conn, str(root))

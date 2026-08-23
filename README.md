@@ -96,7 +96,9 @@ salience, danceability and loudness, keyed by file hash in its own table.
 
 **Ingest runs it per file** when the machine can import essentia
 (`GOLDDIGGER_ESSENTIA=0` opts out; a Docker-only machine gets one folder-wide
-pass at the end of the job). `golddigger essentia <root>` still exists as a
+pass at the end of the job), spread over a process pool — it is the slowest thing
+in an ingest by an order of magnitude, and it holds the GIL, so threads buy
+nothing. `GOLDDIGGER_WORKERS` sets the pool size; the default is cpu_count-1. `golddigger essentia <root>` still exists as a
 re-run over a folder that was ingested without it.
 
 Under `GOLDDIGGER_MOCK=1` it is also the only real measurement in the pipeline,

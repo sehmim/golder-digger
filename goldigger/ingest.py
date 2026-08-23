@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import multiprocessing as mp
 import traceback
 import uuid
+from collections import deque
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -153,6 +156,88 @@ def analyze_file(path: Path, essentia: dict | None = None) -> list[dict]:
     return rows
 
 
+# ------------------------------------------------------- the parallel stage
+
+# Hashing and Essentia are the only per-file costs worth spreading. Everything
+# else a file needs -- chunking, the mock features, the upserts -- is
+# milliseconds and has to touch the connection, which stays on the job's own
+# thread. So a worker gets the two expensive halves and hands back plain data.
+
+_SEEN: set[str] = set()
+_ESSENTIA = False
+
+
+def _worker_init(seen: set[str], essentia: bool) -> None:
+    global _SEEN, _ESSENTIA
+    _SEEN, _ESSENTIA = seen, essentia
+
+
+def prepare(path_str: str, seen: set[str], essentia: bool) -> dict:
+    """One file's hash and Essentia record, or the error that stopped it.
+
+    The dedupe check happens here rather than in the caller so an already-known
+    file costs one hash instead of a round trip: the worker holds a copy of the
+    hashes that were present when the job started.
+    """
+    try:
+        fh = features.file_hash(path_str)
+    except Exception as exc:
+        return dict(path=path_str, error=f"{exc}\n{traceback.format_exc(limit=3)}")
+
+    if fh in seen:
+        return dict(path=path_str, file_hash=fh, seen=True, essentia=None)
+
+    rec = None
+    if essentia:
+        try:
+            rec = essentia_runner.extract_one(path_str)
+        except Exception:
+            rec = None          # a file essentia cannot read is not a failed ingest
+    return dict(path=path_str, file_hash=fh, seen=False, essentia=rec)
+
+
+def _prepare_pooled(path_str: str) -> dict:
+    return prepare(path_str, _SEEN, _ESSENTIA)
+
+
+def prepared(paths, seen, essentia: bool, workers: int):
+    """Yield one prepare() record per path, in walk order.
+
+    Order is what makes the pool invisible to the caller: the loop downstream
+    still writes files in the order they were walked, and its progress counter
+    still means what it did. Only `workers * 4` files are ever in flight, so a
+    library of thousands does not queue thousands of records into memory.
+
+    Serial when there is nothing to spread: without Essentia the per-file cost is
+    a hash, and a process pool costs more than it saves.
+    """
+    if workers <= 1 or not essentia:
+        for path in paths:
+            yield prepare(str(path), seen, essentia)
+        return
+
+    # spawn, not fork: this runs on a background thread of the API process, and
+    # forking a threaded parent is unsafe on macOS.
+    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn"),
+                             initializer=_worker_init,
+                             initargs=(seen, essentia)) as pool:
+        remaining = iter(paths)
+        inflight: deque = deque()
+
+        def top_up() -> None:
+            while len(inflight) < workers * 4:
+                nxt = next(remaining, None)
+                if nxt is None:
+                    return
+                inflight.append(pool.submit(_prepare_pooled, str(nxt)))
+
+        top_up()
+        while inflight:
+            future = inflight.popleft()
+            top_up()
+            yield future.result()
+
+
 def upsert(conn, rows):
     conn.executemany(
         """INSERT INTO chunks (chunk_id, path, file_hash, chunk_index, t_start, t_end,
@@ -207,21 +292,19 @@ def run_job(conn, job_id: str, roots):
         seen = {r["file_hash"] for r in conn.execute(
             "SELECT file_hash FROM files WHERE status='ok'")}
     done = failed = 0
-    for path in paths:
+    # The message now names the file that just came back rather than the one
+    # about to start: with a pool ahead of this loop there are several of those.
+    for record in prepared(paths, seen, inline_essentia, config.INGEST_WORKERS):
+        path = Path(record["path"])
         conn.execute("UPDATE jobs SET message=? WHERE job_id=?", (str(path), job_id))
-        conn.commit()
         try:
-            fh = features.file_hash(path)
+            if record.get("error"):
+                raise RuntimeError(record["error"])
+            fh = record["file_hash"]
             # A skip still falls through to the progress write below: `continue`
             # here froze the bar at zero for any folder already ingested.
             if fh not in seen:                  # content-hash dedupe
-                essentia = None
-                if inline_essentia:
-                    try:
-                        essentia = essentia_runner.extract_one(path)
-                    except Exception:
-                        # a file essentia cannot read is not a failed ingest
-                        essentia = None
+                essentia = record["essentia"]
                 rows = analyze_file(path, essentia)
                 upsert(conn, rows)
                 if essentia:

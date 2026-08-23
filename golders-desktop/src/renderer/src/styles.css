@@ -82,6 +82,9 @@ body {
   display: grid;
   width: min(100%, 520px);
   flex: 1;
+  /* `safe` keeps tall content from overflowing past the top edge, where it
+     could not be scrolled back into view. */
+  align-content: safe center;
 }
 
 .panel {
@@ -1020,4 +1023,13 @@ button:focus-visible {
   margin-top: 2px;
   font-size: 11px;
   color: var(--ink-faint);
+}
+
+
+.center {
+  max-width: 460px;
+  margin: 18px auto 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  text-align: center;
 }
