@@ -7,6 +7,9 @@ DB_PATH = ROOT / "golddigger.db"
 # --- audio ---
 SR = 22050                  # analysis rate
 CLAP_SR = 48000             # CLAP requires 48k
+PREVIEW_SR = 44100          # stable output rate lets one cached session bed serve every candidate
+AUDITION_RENDER_CACHE = 128 # decoded + stretched chunks; roughly bounded to a few hundred MB
+AUDITION_CONTEXT_CACHE = 8  # recent tempo-aligned session beds
 CLAP_MODEL = "laion/larger_clap_music_and_speech"
 CLAP_DIM = 512
 CLAP_WINDOW_SEC = 10.0      # CLAP audio branch window

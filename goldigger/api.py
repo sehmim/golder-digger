@@ -356,12 +356,11 @@ def preview(candidate: str = Query(..., description="chunk to audition"),
         bpms = [r["bpm"] for r in ctx_rows if r["bpm"]]
         target = float(np.median(bpms)) if bpms else None
 
-    y, sr, meta = audition.render_chunk(cand_row, target)
+    # A stable output rate makes the context bed reusable across candidates.
+    # The chunk endpoint above remains native-rate for callers asking for raw audio.
+    y, sr, meta = audition.render_chunk(cand_row, target, sr=config.PREVIEW_SR)
     if not candidate_only and ctx_rows:
-        bed = np.zeros(0, dtype=np.float32)
-        for r in ctx_rows:
-            part, sr_c, _ = audition.render_chunk(r, target, sr=sr)
-            bed = part if not len(bed) else audition.mix(bed, part)
+        bed, _ = audition.render_context(ctx_rows, target, sr=sr)
         y = audition.mix(bed, y)
         meta = {**meta, "mixed_with": len(ctx_rows)}
     return _audio_response(y, sr, {**meta, "target_bpm": target})
