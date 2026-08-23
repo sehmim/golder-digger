@@ -17,3 +17,5 @@ soundbank/*
 
 # raw Essentia extractor output; the useful parts are merged into the database
 essentia.json
+
+.DS_Store

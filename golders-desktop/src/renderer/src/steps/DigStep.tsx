@@ -88,7 +88,9 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
   const [result, setResult] = useState<AnalyzeResult | null>(null)
   const [working, setWorking] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const preview = usePreview()
+  // Candidates sound at the session's tempo, mixed under it, so what is judged
+  // is the combination rather than a clip at a foreign tempo.
+  const preview = usePreview({ bpm: set.session.tempo, contextIds: set.context_ids })
 
   // Only the newest request may write state: a sweep fires several in order.
   const generation = useRef(0)
@@ -148,6 +150,23 @@ export default function DigStep({ set, onBack }: DigStepProps): React.JSX.Elemen
             <span>
               {result ? `fit floor ${result.fit_floor} · ${result.corpus_size} chunks` : 'ranking'}
             </span>
+          </div>
+
+          <div className="audition-mode">
+            <button
+              type="button"
+              data-active={!preview.candidateOnly || undefined}
+              onClick={() => preview.setCandidateOnly(false)}
+            >
+              {set.session.tempo ? `over the session · ${set.session.tempo} BPM` : 'over the session'}
+            </button>
+            <button
+              type="button"
+              data-active={preview.candidateOnly || undefined}
+              onClick={() => preview.setCandidateOnly(true)}
+            >
+              on its own
+            </button>
           </div>
 
           <ul className="result-list">

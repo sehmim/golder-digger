@@ -20,7 +20,9 @@ eighths. Stretching it by 0.5 would wreck it to fix a problem it does not have.
 """
 from __future__ import annotations
 
+import functools
 import io
+from pathlib import Path
 
 import numpy as np
 
@@ -113,11 +115,41 @@ def to_wav(y: np.ndarray, sr: int) -> io.BytesIO:
     return buf
 
 
+def _row_key(row) -> tuple:
+    """Hashable audio identity, including the source file's current version.
+
+    Chunk ids are content-derived, but previews still read the path on disk. The
+    stat fields keep a replaced file from receiving audio cached for its former
+    contents without putting file bytes in the key.
+    """
+    path = str(row["path"])
+    stat = Path(path).stat()
+    return (
+        path,
+        float(row["t_start"]),
+        float(row["t_end"]),
+        float(row["bpm"]) if row["bpm"] is not None else None,
+        stat.st_mtime_ns,
+        stat.st_size,
+    )
+
+
+@functools.lru_cache(maxsize=config.AUDITION_RENDER_CACHE)
+def _render_cached(key: tuple, target_bpm: float | None, sr: int | None):
+    """Decode and stretch once for every (chunk, tempo, sample-rate) render."""
+    path, t_start, t_end, source_bpm, _mtime_ns, _size = key
+    y, actual_sr = load_chunk(path, t_start, t_end, sr)
+    rate, effective = stretch_rate(source_bpm, target_bpm)
+    y = time_stretch(y, rate)
+    # Cache entries are shared across requests. All mixing paths copy before
+    # arithmetic, and read-only arrays make that contract explicit.
+    y.setflags(write=False)
+    return y, actual_sr, rate, effective
+
+
 def render_chunk(row, target_bpm: float | None, sr: int | None = None):
     """One chunk, stretched to the session tempo. -> (audio, sr, meta)."""
-    y, sr = load_chunk(row["path"], row["t_start"], row["t_end"], sr)
-    rate, effective = stretch_rate(row["bpm"], target_bpm)
-    y = time_stretch(y, rate)
+    y, sr, rate, effective = _render_cached(_row_key(row), target_bpm, sr)
     return y, sr, {
         "source_bpm": row["bpm"],
         "target_bpm": target_bpm,
@@ -126,3 +158,26 @@ def render_chunk(row, target_bpm: float | None, sr: int | None = None):
         "stretched": abs(rate - 1.0) >= 1e-3,
         "pitch_shifted": False,
     }
+
+
+@functools.lru_cache(maxsize=config.AUDITION_CONTEXT_CACHE)
+def _render_context_cached(keys: tuple[tuple, ...], target_bpm: float | None, sr: int):
+    """Build the reusable session bed once instead of once per candidate."""
+    bed = np.zeros(0, dtype=np.float32)
+    for key in keys:
+        part, _actual_sr, _rate, _effective = _render_cached(key, target_bpm, sr)
+        bed = part if not len(bed) else mix(bed, part)
+    bed.setflags(write=False)
+    return bed
+
+
+def render_context(rows, target_bpm: float | None, sr: int = config.PREVIEW_SR):
+    """Tempo-align and mix a session context, with a bounded file-aware cache."""
+    keys = tuple(_row_key(row) for row in rows)
+    return _render_context_cached(keys, target_bpm, sr), sr
+
+
+def clear_caches() -> None:
+    """Drop cached audio, primarily for tests and an explicit future reload path."""
+    _render_context_cached.cache_clear()
+    _render_cached.cache_clear()

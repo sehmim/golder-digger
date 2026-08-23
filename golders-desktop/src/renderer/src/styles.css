@@ -1046,3 +1046,42 @@ button:focus-visible {
   font-size: 12px;
   text-align: center;
 }
+
+/* Audition mode: hear a candidate over the session, or by itself. Both are
+   tempo-aligned -- the switch is about context, not about turning sync off. */
+.audition-mode {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 14px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--surface-sunk, rgba(255, 255, 255, 0.04));
+}
+
+.audition-mode button {
+  flex: 1;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim, rgba(255, 255, 255, 0.55));
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.audition-mode button:hover {
+  color: var(--text, rgba(255, 255, 255, 0.9));
+}
+
+.audition-mode button[data-active] {
+  background: var(--surface-raised, rgba(255, 255, 255, 0.09));
+  color: var(--text, rgba(255, 255, 255, 0.95));
+}
+
+.audition-mode button:focus-visible {
+  outline: 2px solid var(--accent, #c9a227);
+  outline-offset: 1px;
+}

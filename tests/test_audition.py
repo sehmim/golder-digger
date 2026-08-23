@@ -125,3 +125,52 @@ def test_render_reports_what_it_did(tmp_path):
     assert meta["stretched"] is True
     assert meta["pitch_shifted"] is False
     assert meta["effective_bpm"] == pytest.approx(120.0, rel=0.01)
+
+
+def test_chunk_render_is_cached_by_audio_and_target(tmp_path, monkeypatch):
+    path = tmp_path / "loop.wav"
+    path.write_bytes(b"cache-key")
+    row = {"path": str(path), "t_start": 0.0, "t_end": 1.0, "bpm": 90.0}
+    calls = 0
+
+    def fake_load(*_args):
+        nonlocal calls
+        calls += 1
+        return np.ones(100, dtype=np.float32), 22050
+
+    audition.clear_caches()
+    monkeypatch.setattr(audition, "load_chunk", fake_load)
+    monkeypatch.setattr(audition, "time_stretch", lambda y, _rate: y)
+    audition.render_chunk(row, 120.0, sr=22050)
+    audition.render_chunk(row, 120.0, sr=22050)
+    audition.render_chunk(row, 100.0, sr=22050)
+    assert calls == 2
+    path.write_bytes(b"cache-key-with-new-contents")
+    audition.render_chunk(row, 120.0, sr=22050)
+    assert calls == 3, "replacing the source file must invalidate its cached audio"
+    audition.clear_caches()
+
+
+def test_context_bed_is_built_once(tmp_path, monkeypatch):
+    paths = [tmp_path / "a.wav", tmp_path / "b.wav"]
+    for path in paths:
+        path.write_bytes(b"context-cache")
+    rows = [
+        {"path": str(path), "t_start": 0.0, "t_end": 1.0, "bpm": 120.0}
+        for path in paths
+    ]
+    calls = 0
+
+    def fake_load(*_args):
+        nonlocal calls
+        calls += 1
+        return np.ones(100, dtype=np.float32), 22050
+
+    audition.clear_caches()
+    monkeypatch.setattr(audition, "load_chunk", fake_load)
+    monkeypatch.setattr(audition, "time_stretch", lambda y, _rate: y)
+    first, _ = audition.render_context(rows, 120.0, sr=22050)
+    second, _ = audition.render_context(rows, 120.0, sr=22050)
+    assert calls == len(rows)
+    assert first is second
+    audition.clear_caches()

@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 
+interface AuditionOptions {
+  bpm?: number | null
+  contextIds?: string[]
+  candidateOnly?: boolean
+}
+
 contextBridge.exposeInMainWorld('desktop', {
   selectDirectories: (): Promise<string[]> => ipcRenderer.invoke('directory:select'),
   selectProject: (): Promise<string | null> => ipcRenderer.invoke('project:select'),
@@ -12,8 +18,8 @@ contextBridge.exposeInMainWorld('desktop', {
     ipcRenderer.invoke('session:analyze', contextIds, distance, k, sessionPath ?? null),
   startEssentia: (root: string): Promise<string> => ipcRenderer.invoke('essentia:start', root),
   essentiaSummary: () => ipcRenderer.invoke('essentia:summary'),
-  chunkAudio: (chunkId: string): Promise<ArrayBuffer> =>
-    ipcRenderer.invoke('chunk:audio', chunkId),
+  chunkAudio: (chunkId: string, options?: AuditionOptions): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('chunk:audio', chunkId, options ?? {}),
 
   onIngestProgress: (handler: (status: unknown) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, status: unknown): void => handler(status)

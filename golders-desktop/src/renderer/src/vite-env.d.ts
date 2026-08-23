@@ -19,7 +19,10 @@ declare global {
       ) => Promise<AnalyzeResult>
       startEssentia: (root: string) => Promise<string>
       essentiaSummary: () => Promise<EssentiaSummary>
-      chunkAudio: (chunkId: string) => Promise<ArrayBuffer>
+      chunkAudio: (
+        chunkId: string,
+        options?: { bpm?: number | null; contextIds?: string[]; candidateOnly?: boolean }
+      ) => Promise<ArrayBuffer>
 
       onIngestProgress: (handler: (status: unknown) => void) => () => void
       onIngestError: (handler: (payload: unknown) => void) => () => void
