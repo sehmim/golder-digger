@@ -21,7 +21,7 @@ export default function SettingsApp({
   return (
     <main className="settings-page" aria-label="Settings">
       <header className="settings-page__header">
-        <h1>Settings</h1>
+        <h1></h1>
         <InterfaceMenu current="settings" onNavigate={onNavigate} />
       </header>
 
@@ -34,7 +34,13 @@ export default function SettingsApp({
               className="settings-knob-option"
               data-selected={state.settings.knobStyle === option.id || undefined}
               type="button"
-              onClick={() => actions.setKnobStyle(option.id)}
+              // Picking a knob is the whole reason to be on this page, and the
+              // choice is only legible on the knob itself -- so the selection
+              // doubles as the way back to it.
+              onClick={() => {
+                actions.setKnobStyle(option.id)
+                onNavigate('golden')
+              }}
             >
               <span className="settings-knob-preview" data-style={option.id} aria-hidden="true">
                 <span />
