@@ -5,6 +5,7 @@ import type { GoldDiggerDiagnostics } from '../interfaces/gold-digger/types'
 import GoldenApp from '../interfaces/golden/GoldenApp'
 import SettingsApp from '../interfaces/settings/SettingsApp'
 import type { InterfaceId } from '../shared/interfaceNavigation'
+import BootSplash from './BootSplash'
 import FolderManager from './FolderManager'
 
 const INITIAL_GOLD_DIGGER_DIAGNOSTICS: GoldDiggerDiagnostics = {
@@ -22,6 +23,13 @@ export default function RendererShell(): React.JSX.Element {
     focusedFolderId: string | null
   }>({ open: false, focusedFolderId: null })
   const [goldDiggerDiagnostics, setGoldDiggerDiagnostics] = useState(INITIAL_GOLD_DIGGER_DIAGNOSTICS)
+  // The splash outlives `ready` by one transition so it can fade rather than pop.
+  const [splashGone, setSplashGone] = useState(false)
+  useEffect(() => {
+    if (!state.api.ready) return
+    const timer = setTimeout(() => setSplashGone(true), 450)
+    return () => clearTimeout(timer)
+  }, [state.api.ready])
   const updateGoldDiggerDiagnostics = useCallback(
     (diagnostics: GoldDiggerDiagnostics) => setGoldDiggerDiagnostics(diagnostics),
     []
@@ -93,6 +101,7 @@ export default function RendererShell(): React.JSX.Element {
           onClose={() => setFolderManager({ open: false, focusedFolderId: null })}
         />
       ) : null}
+      {!splashGone ? <BootSplash ready={state.api.ready} error={state.api.error} /> : null}
     </div>
   )
 }

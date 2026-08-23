@@ -291,6 +291,48 @@ button:focus-visible {
   }
 }
 
+/* ------------------------------------------------------------- boot splash */
+
+.boot-splash {
+  position: fixed;
+  /* under the titlebar drag strip (10000): the window stays draggable while it boots */
+  z-index: 9999;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--color-background);
+  opacity: 1;
+  transition: opacity 400ms ease;
+}
+
+.boot-splash[data-ready] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-splash__video {
+  width: min(480px, 82vw);
+}
+
+.boot-splash__status {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.boot-splash__status[data-error] {
+  max-width: 520px;
+  color: var(--color-error);
+  text-align: center;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* ---------------------------------------------------------------- sources */
 
 .selections {
