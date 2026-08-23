@@ -56,8 +56,10 @@ and broadcasts; `useIngest` stitches each reading onto the row that started it, 
 Audio arrives as **bytes over IPC, not a URL**. A `<audio src="http://127.0.0.1:8420/...">`
 would work in Electron, but it is a second route from the renderer to the API and it
 would outlive `contextIsolation` as the only thing keeping the two apart. `usePreview`
-turns the bytes into a blob URL and caches it per chunk, because sweeping the dial back
-and forth re-lists the same candidates and each render costs a librosa decode.
+turns the bytes into a blob URL and keeps a bounded cache per rendered tempo/mode, because
+sweeping the dial or switching solo/context re-lists the same candidates. The Python side
+also caches decoded, tempo-stretched chunks and the mixed session bed, so auditioning a
+second candidate does not rebuild every context chunk.
 
 ## UI flow
 

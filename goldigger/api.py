@@ -7,7 +7,7 @@ import json
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
 from . import ableton, audition, config, db, essentia_runner, ingest, listening, scoring
@@ -322,8 +322,11 @@ def _audio_response(y, sr, meta):
     """Render meta travels in headers so the caller can show what was done to
     the audio -- a stretched preview should never be mistaken for the raw file."""
     headers = {f"x-audition-{k.replace('_', '-')}": str(v) for k, v in meta.items()}
-    return StreamingResponse(audition.to_wav(y, sr), media_type="audio/wav",
-                             headers=headers)
+    # The WAV already exists completely in memory. Streaming a BytesIO makes
+    # Starlette iterate it through a worker thread; one Response avoids that
+    # per-chunk handoff and reaches Electron noticeably sooner.
+    return Response(content=audition.to_wav(y, sr).getvalue(), media_type="audio/wav",
+                    headers=headers)
 
 
 @app.get("/chunk/{chunk_id}/audio")
