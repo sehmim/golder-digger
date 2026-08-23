@@ -57,11 +57,13 @@ scaled by `tonalness × TONALNESS_GAIN`. `tonalness` is normalized negative entr
 a flat chroma, approaching 1 for a peaked one. Without that second term, drums claim a
 confident key, and a sample library is mostly drums.
 
-## Novelty ranks across the whole corpus
+## Novelty ranks across the active candidate corpus
 
-`novelty_all()` percentile-ranks `1 − clap·ctx_clap` over **every** chunk, not over the
-Fit-passing subset. The fit floor relaxes when the pool is sparse (below), which would
-otherwise silently shift every novelty value for the same context.
+`novelty_all()` percentile-ranks `1 − clap·ctx_clap` over every chunk allowed by the
+active folder roots, not over the Fit-passing subset. The fit floor relaxes when the
+pool is sparse (below), which would otherwise silently shift every novelty value for
+the same context. Changing the active folders can therefore change the percentile
+represented by the same knob position.
 
 ## Selection is greedy MMR
 

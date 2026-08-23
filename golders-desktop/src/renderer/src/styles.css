@@ -1390,6 +1390,150 @@ button:focus-visible {
   cursor: default;
 }
 
+.dev-context {
+  height: 100%;
+  overflow: auto;
+}
+
+.dev-context__summary {
+  display: grid;
+  margin: 0;
+  border-bottom: 1px solid var(--color-border);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dev-context__summary > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-right: 1px solid var(--color-border);
+}
+
+.dev-context__summary > div:last-child {
+  border-right: 0;
+}
+
+.dev-context__summary dt,
+.dev-context__source dt {
+  color: var(--color-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.dev-context__summary dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.dev-context__source {
+  display: grid;
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-context__source > div {
+  display: grid;
+  min-width: 0;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  grid-template-columns: 130px minmax(0, 1fr);
+}
+
+.dev-context__source dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font: 10px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-context__table {
+  min-width: 0;
+  overflow: auto;
+}
+
+.dev-context__table-head,
+.dev-context__table li {
+  display: grid;
+  min-width: 650px;
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: minmax(190px, 1.8fr) 82px 62px 52px minmax(90px, 0.8fr);
+}
+
+.dev-context__table-head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  min-height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.dev-context__table ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-context__table li {
+  min-height: 48px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.dev-context__table li:hover {
+  background: var(--color-hover);
+}
+
+.dev-context__table li[data-status='unresolved'] > span:nth-child(2) {
+  color: var(--color-error);
+}
+
+.dev-context__table li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-context__sample {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dev-context__sample strong,
+.dev-context__sample small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-context__sample strong {
+  color: var(--color-text);
+  font-size: 11px;
+}
+
+.dev-context__sample small {
+  color: var(--color-muted);
+  font-size: 9px;
+}
+
 .dev-page__canvas {
   display: block;
   padding-top: 30px;
@@ -1637,6 +1781,25 @@ button:focus-visible {
   gap: 4px;
 }
 
+.golden-context-trigger {
+  position: absolute;
+  top: 52px;
+  left: 48px;
+  min-height: 38px;
+  padding: 0 2px;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.golden-context-trigger:hover {
+  opacity: 0.6;
+}
+
 .golden-folders {
   display: flex;
   min-width: 38px;
@@ -1796,8 +1959,9 @@ button:focus-visible {
   background: var(--color-text);
 }
 
-/* --------------------------------------------------------- folder manager */
+/* -------------------------------------------------------- context selector */
 
+.context-selector-layer,
 .folder-manager-layer {
   position: fixed;
   z-index: 1000;
@@ -1807,6 +1971,112 @@ button:focus-visible {
   background: color-mix(in srgb, var(--color-text) 24%, transparent);
   place-items: center;
 }
+
+.context-selector {
+  display: flex;
+  width: min(500px, 100%);
+  flex-direction: column;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-background);
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--color-text) 28%, transparent);
+}
+
+.context-selector__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.context-selector__header h1 {
+  font-size: 24px;
+}
+
+.context-selector__close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.context-selector__source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 66px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.context-selector__identity {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.context-selector__identity strong,
+.context-selector__identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-selector__identity strong {
+  font-size: 14px;
+}
+
+.context-selector__identity span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.context-selector__source > button,
+.context-selector__remove {
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.context-selector__source > button:hover:not(:disabled),
+.context-selector__remove:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+
+.context-selector__source > button:disabled,
+.context-selector__remove:disabled,
+.context-selector__close:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.context-selector__error {
+  margin: 12px 0 0;
+  color: var(--color-error);
+  font-size: 11px;
+}
+
+.context-selector__remove {
+  align-self: flex-start;
+  margin-top: 16px;
+}
+
+/* --------------------------------------------------------- folder manager */
 
 .folder-manager {
   display: flex;

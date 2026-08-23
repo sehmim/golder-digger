@@ -2,13 +2,14 @@ import { useState } from 'react'
 import type { ApplicationState } from '../../application/ApplicationState'
 import type { GoldDiggerDiagnostics } from '../gold-digger/types'
 import AnalysisFilesTab from './AnalysisFilesTab'
+import ContextTab from './ContextTab'
 
 interface DevAppProps {
   state: ApplicationState
   goldDigger: GoldDiggerDiagnostics
 }
 
-type DevTab = 'files'
+type DevTab = 'files' | 'context'
 
 function StatePill({ active, children }: { active: boolean; children: React.ReactNode }) {
   return (
@@ -86,9 +87,19 @@ export default function DevApp({ state, goldDigger }: DevAppProps): React.JSX.El
             >
               Files
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'context'}
+              data-active={activeTab === 'context' || undefined}
+              onClick={() => setActiveTab('context')}
+            >
+              Context
+            </button>
           </nav>
           <div className="dev-tab-panel" role="tabpanel">
             {activeTab === 'files' ? <AnalysisFilesTab application={state} /> : null}
+            {activeTab === 'context' ? <ContextTab project={state.project} /> : null}
           </div>
         </section>
       </div>
