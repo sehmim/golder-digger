@@ -1805,6 +1805,11 @@ button:focus-visible {
   opacity: 0.6;
 }
 
+.golden-context-trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .golden-context-trigger__name,
 .golden-context-trigger__meta {
   overflow: hidden;
@@ -1823,6 +1828,10 @@ button:focus-visible {
   font-weight: 600;
 }
 
+.golden-context-trigger[data-error] .golden-context-trigger__meta {
+  color: var(--color-error);
+}
+
 .golden-folders {
   display: flex;
   min-width: 38px;
@@ -1832,15 +1841,15 @@ button:focus-visible {
 
 .golden-folders__strip {
   display: flex;
-  max-width: min(420px, 48vw);
+  min-width: 0;
+  align-items: center;
   gap: 6px;
-  overflow: hidden;
 }
 
 .golden-folder {
   display: flex;
   min-width: 0;
-  max-width: 118px;
+  max-width: min(250px, 32vw);
   height: 32px;
   flex: 0 0 auto;
   align-items: center;
@@ -1864,6 +1873,23 @@ button:focus-visible {
   opacity: 0.42;
 }
 
+.golden-folder__icon {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.golden-folder__icon svg {
+  width: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .golden-folder__name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1884,6 +1910,13 @@ button:focus-visible {
 
 .golden-folder[data-analysis='failed'] .golden-folder__status {
   background: var(--color-error);
+}
+
+.golden-folder__remaining {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .folder-manager-trigger {
@@ -1912,6 +1945,7 @@ button:focus-visible {
 }
 
 .golden-knob {
+  position: relative;
   width: 112px;
   height: 112px;
   padding: 0;
@@ -1926,9 +1960,53 @@ button:focus-visible {
   cursor: grabbing;
 }
 
+.golden-knob:disabled {
+  cursor: default;
+  filter: grayscale(1);
+  opacity: 0.38;
+}
+
+.golden-knob:disabled .golden-knob__face {
+  box-shadow: none;
+}
+
 .golden-knob:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 7px;
+}
+
+.golden-knob__notches {
+  position: absolute;
+  inset: -14px;
+  pointer-events: none;
+}
+
+.golden-knob__notch {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transform-origin: center;
+}
+
+.golden-knob__notch::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--color-muted);
+  content: '';
+  opacity: 0.62;
+  transform: translateX(-50%);
+  transition: height 90ms ease-out, opacity 90ms ease-out, width 90ms ease-out;
+}
+
+.golden-knob__notch[data-active]::before {
+  width: 2px;
+  height: 10px;
+  background: var(--color-text);
+  opacity: 1;
 }
 
 .golden-knob__face {
@@ -2116,9 +2194,6 @@ button:focus-visible {
   color: var(--color-error);
 }
 
-/* -------------------------------------------------------- context selector */
-
-.context-selector-layer,
 .folder-manager-layer {
   position: fixed;
   z-index: 1000;
@@ -2127,110 +2202,6 @@ button:focus-visible {
   padding: 48px;
   background: color-mix(in srgb, var(--color-text) 24%, transparent);
   place-items: center;
-}
-
-.context-selector {
-  display: flex;
-  width: min(500px, 100%);
-  flex-direction: column;
-  padding: 24px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-background);
-  box-shadow: 0 24px 70px color-mix(in srgb, var(--color-text) 28%, transparent);
-}
-
-.context-selector__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.context-selector__header h1 {
-  font-size: 24px;
-}
-
-.context-selector__close {
-  width: 34px;
-  height: 34px;
-  border: 0;
-  color: var(--color-text);
-  background: transparent;
-  font: inherit;
-  font-size: 28px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.context-selector__source {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 66px;
-  padding: 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-surface);
-}
-
-.context-selector__identity {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.context-selector__identity strong,
-.context-selector__identity span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.context-selector__identity strong {
-  font-size: 14px;
-}
-
-.context-selector__identity span {
-  color: var(--color-muted);
-  font-size: 11px;
-}
-
-.context-selector__source > button,
-.context-selector__remove {
-  padding: 7px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
-  color: var(--color-text);
-  background: transparent;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.context-selector__source > button:hover:not(:disabled),
-.context-selector__remove:hover:not(:disabled) {
-  background: var(--color-hover);
-}
-
-.context-selector__source > button:disabled,
-.context-selector__remove:disabled,
-.context-selector__close:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.context-selector__error {
-  margin: 12px 0 0;
-  color: var(--color-error);
-  font-size: 11px;
-}
-
-.context-selector__remove {
-  align-self: flex-start;
-  margin-top: 16px;
 }
 
 /* --------------------------------------------------------- folder manager */
@@ -2294,6 +2265,16 @@ button:focus-visible {
   border-color: var(--color-accent);
 }
 
+.folder-manager__list li[data-disabled] {
+  border-color: color-mix(in srgb, var(--color-muted) 42%, transparent);
+  background: color-mix(in srgb, var(--color-muted) 16%, var(--color-surface));
+}
+
+.folder-manager__list li[data-disabled] .folder-manager__identity,
+.folder-manager__list li[data-disabled] .folder-manager__status {
+  opacity: 0.58;
+}
+
 .folder-manager__identity {
   display: grid;
   min-width: 0;
@@ -2355,6 +2336,17 @@ button:focus-visible {
 .folder-manager__actions button:hover,
 .folder-manager__add:hover {
   background: var(--color-hover);
+}
+
+.folder-manager__actions .folder-manager__remove {
+  border-color: var(--color-muted);
+  color: var(--color-surface);
+  background: var(--color-muted);
+}
+
+.folder-manager__actions .folder-manager__remove:hover {
+  border-color: var(--color-text);
+  background: var(--color-text);
 }
 
 .folder-manager__empty {

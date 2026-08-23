@@ -53,7 +53,8 @@ Golden UI currently supports the beginning of the intended experience:
 
 1. The user can add and inspect analyzed workspace folders.
 2. Folders can be enabled, disabled, retried, or removed from the workspace.
-3. The user can open Context Selector and choose a saved Ableton `.als` project.
+3. The user can choose a saved Ableton `.als` project directly from the compact
+   upper-left context control.
 4. The shared application state receives the resolved project.
 5. Golden UI summarizes available tempo and tonal center, such as `124 BPM · C`.
 6. The central knob can be manipulated and styled.
@@ -136,15 +137,18 @@ The first complete Golden UI journey should be:
 - [ ] Decide whether all matched project samples are included automatically.
 - [ ] Decide whether individual references can be included or excluded.
 - [ ] Represent available and included inputs separately in shared state.
-- [ ] Keep missing and unresolved references visible in Context Selector and Dev.
+- [ ] Keep missing and unresolved references visible in Dev and a future detailed
+      context-management surface if one becomes necessary.
 - [x] Ensure candidates never return the same source files used as context.
 
 ### 3. Connect the Golden knob and suggestions
 
-- [ ] Quiet or disable the knob until usable context and active candidates exist.
+- [x] Disable the knob until the selected project provides usable context audio.
+- [ ] Quiet or disable the knob when no active candidates exist.
 - [ ] Move the Golden knob value into the appropriate shared query state.
 - [x] Map it to backend novelty without reanalyzing audio.
 - [x] Snap the Golden knob to five detents at novelty 10, 30, 50, 70, and 90.
+- [x] Show five exterior notch marks aligned with the actual detents.
 - [x] Rank once when the user releases the knob.
 - [x] Cache completed rankings per context, corpus, active folders, and detent so
       returning to a previously visited position is immediate.
@@ -186,11 +190,11 @@ The first complete Golden UI journey should be:
 Settled for the first iteration:
 
 - Saved `.als` is the first Golden Context source.
-- Empty Golden UI shows `Select context`.
+- Empty Golden UI shows `No Ableton project` with a direct `+ Choose .als` action.
 - Ready Golden UI shows the project name with tempo and tonal center beneath it.
 - Tonal center does not require major, minor, or mode in the compact UI.
-- Context Selector is a shell-level modal, not another primary interface.
-- Successfully choosing a project closes Context Selector and returns to the knob.
+- Golden UI opens the native saved-project chooser directly without an intermediate modal.
+- Successfully choosing a project updates the compact context control and stays on the knob.
 - Dev contains detailed context truth that would clutter Golden UI.
 - Folder removal means remove from workspace, never delete source audio or analysis.
 

@@ -35,8 +35,7 @@ App
 │       ├── GoldDiggerApp          sibling interface
 │       ├── GoldenApp              sibling interface
 │       ├── SettingsApp            sibling interface
-│       ├── FolderManager          shell-level overlay
-│       └── ContextSelector        shell-level overlay
+│       └── FolderManager          shell-level overlay
 └── DevWindow                      separate Electron window; snapshot observer
 ```
 
@@ -62,7 +61,6 @@ src/renderer/src/
     useIngest.ts             ingest jobs and progress events
 
   shell/
-    ContextSelector.tsx      saved-project context above every interface
     FolderManager.tsx        folder controls above every interface
     RendererShell.tsx        selects and keeps interfaces mounted
 
@@ -149,7 +147,6 @@ It never deletes audio files or cached SQLite analysis.
 - The active primary `InterfaceId` (Dev is excluded).
 - The latest Gold Digger diagnostic snapshot published to Dev.
 - Whether Folder Manager is open and which folder it should focus.
-- Whether Context Selector is open.
 - Shortcut subscriptions and their development fallback.
 
 The destination union and labels live in `shared/interfaceNavigation.ts`, not in
@@ -159,9 +156,9 @@ individual interfaces.
 
 - Gold Digger owns its current workflow step, leaving panel, transition timers,
   and one-time advancement guards.
-- Golden UI owns the knob's current numeric position. Its folder strip and context
-  summary render shared state and open shell overlays; it owns neither folders nor
-  the connected project.
+- Golden UI owns the knob's current numeric position and direct saved-project
+  chooser state. Its folder strip and context summary render shared state; it owns
+  neither folders nor the connected project.
 - The shared interface menu owns whether its dropdown is open.
 
 Gold Digger's current step is useful to Dev, but it is not application state. The
@@ -191,12 +188,13 @@ control, a Folder Manager trigger, and the shared interface menu. Folder buttons
 show short names, keep full paths in their title, and open Folder Manager focused
 on the selected record.
 
-The context control opens Context Selector. With no project it reads `Select
-context`; after a saved `.als` is resolved it summarizes available tempo and tonal
-center. The knob responds to vertical pointer dragging and arrow keys. Releasing
-it makes one ranking request using the connected project's context chunks and the
-active folder roots, then opens a blurred, scrollable results layer. Back closes
-the layer without resetting the knob.
+The context control opens the native saved-project chooser directly. With no
+project it shows `No Ableton project` and `+ Choose .als`; after a saved `.als` is
+resolved it summarizes the project name, tempo, and tonal center. Loading and
+errors remain in that compact area. The knob responds to vertical pointer dragging
+and arrow keys. Releasing it makes one ranking request using the connected
+project's context chunks and the active folder roots, then opens a blurred,
+scrollable results layer. Back closes the layer without resetting the knob.
 
 ### Folder Manager
 
@@ -206,14 +204,8 @@ interface. The first trigger lives beside Golden UI's hamburger. It supports add
 enable, disable, retry, and “Remove from workspace.” Removal deletes only the
 settings record; source audio and SQLite analysis are untouched.
 
-### Context Selector
-
-Context Selector is the other shell-level modal. It chooses, changes, or clears a
-saved Ableton `.als` project through the existing project dialog and resolver. A
-successful load writes the shared `project` state immediately. Golden UI consumes
-that state as a compact tempo and tonal-center summary.
-
-This is only the first Golden Context source. Missing-reference ingestion is still
+The direct saved-project control is only the first Golden Context source.
+Missing-reference ingestion is still
 owned by the original Gold Digger `ProjectStep`, and shared state does not yet
 distinguish available project references from deliberately included inputs. Product
 work is tracked in [golden-ui-roadmap.md](golden-ui-roadmap.md).

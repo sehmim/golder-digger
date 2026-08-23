@@ -11,6 +11,7 @@ interface GoldenKnobProps {
   onChange: (value: number) => void
   onCommit: (value: number) => void
   style: KnobStyle
+  disabled?: boolean
 }
 
 function stepIndex(value: number): number {
@@ -32,7 +33,8 @@ export default function GoldenKnob({
   value,
   onChange,
   onCommit,
-  style
+  style,
+  disabled = false
 }: GoldenKnobProps): React.JSX.Element {
   const drag = useRef<{
     startY: number
@@ -51,18 +53,20 @@ export default function GoldenKnob({
       data-dragging={dragging || undefined}
       type="button"
       role="slider"
-      aria-label="Knob"
+      aria-label={disabled ? 'Knob unavailable until context audio is resolved' : 'Knob'}
       aria-valuemin={1}
       aria-valuemax={DISTANCE_STEPS.length}
       aria-valuenow={position + 1}
       aria-valuetext={STEP_LABELS[position]}
+      disabled={disabled}
       onPointerDown={(event) => {
+        if (disabled) return
         event.currentTarget.setPointerCapture(event.pointerId)
         drag.current = { startY: event.clientY, startValue: value, currentValue: value, changed: false }
         setDragging(true)
       }}
       onPointerMove={(event) => {
-        if (!drag.current) return
+        if (disabled || !drag.current) return
         const startPosition = stepIndex(drag.current.startValue)
         const offset = Math.round((drag.current.startY - event.clientY) / PIXELS_PER_STEP)
         const next = stepAt(startPosition + offset)
@@ -71,6 +75,7 @@ export default function GoldenKnob({
         onChange(next)
       }}
       onPointerUp={(event) => {
+        if (disabled) return
         event.currentTarget.releasePointerCapture(event.pointerId)
         const completed = drag.current
         drag.current = null
@@ -82,6 +87,7 @@ export default function GoldenKnob({
         setDragging(false)
       }}
       onKeyDown={(event) => {
+        if (disabled) return
         if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
           event.preventDefault()
           onChange(stepAt(position + 1))
@@ -92,6 +98,7 @@ export default function GoldenKnob({
         }
       }}
       onKeyUp={(event) => {
+        if (disabled) return
         if (
           event.key === 'ArrowUp' ||
           event.key === 'ArrowRight' ||
@@ -102,6 +109,19 @@ export default function GoldenKnob({
         }
       }}
     >
+      <span className="golden-knob__notches" aria-hidden="true">
+        {DISTANCE_STEPS.map((step, index) => {
+          const notchAngle = -SWEEP / 2 + (index / (DISTANCE_STEPS.length - 1)) * SWEEP
+          return (
+            <span
+              key={step}
+              className="golden-knob__notch"
+              data-active={index === position || undefined}
+              style={{ transform: `rotate(${notchAngle}deg)` }}
+            />
+          )
+        })}
+      </span>
       <span className="golden-knob__face" aria-hidden="true">
         <span className="golden-knob__indicator" style={{ transform: `rotate(${angle}deg)` }} />
       </span>

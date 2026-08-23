@@ -5,7 +5,6 @@ import type { GoldDiggerDiagnostics } from '../interfaces/gold-digger/types'
 import GoldenApp from '../interfaces/golden/GoldenApp'
 import SettingsApp from '../interfaces/settings/SettingsApp'
 import type { InterfaceId } from '../shared/interfaceNavigation'
-import ContextSelector from './ContextSelector'
 import FolderManager from './FolderManager'
 
 const INITIAL_GOLD_DIGGER_DIAGNOSTICS: GoldDiggerDiagnostics = {
@@ -22,7 +21,6 @@ export default function RendererShell(): React.JSX.Element {
     open: boolean
     focusedFolderId: string | null
   }>({ open: false, focusedFolderId: null })
-  const [contextSelectorOpen, setContextSelectorOpen] = useState(false)
   const [goldDiggerDiagnostics, setGoldDiggerDiagnostics] = useState(INITIAL_GOLD_DIGGER_DIAGNOSTICS)
   const updateGoldDiggerDiagnostics = useCallback(
     (diagnostics: GoldDiggerDiagnostics) => setGoldDiggerDiagnostics(diagnostics),
@@ -81,7 +79,6 @@ export default function RendererShell(): React.JSX.Element {
       <div className="interface-view" hidden={activeInterface !== 'golden'}>
         <GoldenApp
           onNavigate={navigate}
-          onOpenContextSelector={() => setContextSelectorOpen(true)}
           onOpenFolderManager={(folderId) =>
             setFolderManager({ open: true, focusedFolderId: folderId ?? null })
           }
@@ -95,9 +92,6 @@ export default function RendererShell(): React.JSX.Element {
           focusedFolderId={folderManager.focusedFolderId}
           onClose={() => setFolderManager({ open: false, focusedFolderId: null })}
         />
-      ) : null}
-      {contextSelectorOpen ? (
-        <ContextSelector onClose={() => setContextSelectorOpen(false)} />
       ) : null}
     </div>
   )

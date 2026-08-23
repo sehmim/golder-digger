@@ -52,7 +52,12 @@ export default function FolderManager({
                     ? 'checking'
                     : folder.analysis
               return (
-                <li key={folder.id} ref={isFocused ? focused : undefined} data-focused={isFocused || undefined}>
+                <li
+                  key={folder.id}
+                  ref={isFocused ? focused : undefined}
+                  data-focused={isFocused || undefined}
+                  data-disabled={!folder.enabled || undefined}
+                >
                   <div className="folder-manager__identity">
                     <strong title={folder.path}>{folder.name}</strong>
                     <span title={folder.path}>{folder.path}</span>
@@ -75,7 +80,11 @@ export default function FolderManager({
                     >
                       {folder.enabled ? 'Disable' : 'Enable'}
                     </button>
-                    <button type="button" onClick={() => actions.removeFolder(folder.id)}>
+                    <button
+                      type="button"
+                      className="folder-manager__remove"
+                      onClick={() => actions.removeFolder(folder.id)}
+                    >
                       Remove from workspace
                     </button>
                   </div>

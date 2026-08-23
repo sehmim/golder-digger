@@ -31,7 +31,7 @@ RendererShell
         ├── Golden UI
         ├── Settings
         ├── Folder Manager overlay
-        └── Context Selector overlay
+        └── Direct saved-project chooser
 
 Dev window ← snapshots from the primary renderer
 ```
@@ -71,8 +71,7 @@ for analyzed-library and saved-project details.
 - The current interface remains visible but disabled in the menu.
 - Folder Manager is a shell overlay reached beside the Golden UI hamburger, not
   another menu destination.
-- Context Selector is a shell overlay reached through Golden UI's upper-left
-  context control.
+- Golden UI's upper-left context control opens the saved-project chooser directly.
 
 ## Shared UI rules
 
