@@ -60,6 +60,28 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Interface shortcuts are scoped to the focused application window rather
+  // than registered globally with macOS.
+  window.webContents.on('before-input-event', (event, input) => {
+    const isInterfaceShortcut =
+      input.type === 'keyDown' &&
+      input.meta &&
+      input.alt &&
+      !input.control &&
+      !input.shift &&
+      !input.isAutoRepeat
+
+    if (isInterfaceShortcut && input.code === 'KeyD') {
+      event.preventDefault()
+      window.webContents.send('dev:toggle')
+    }
+
+    if (isInterfaceShortcut && input.code === 'KeyS') {
+      event.preventDefault()
+      window.webContents.send('settings:open')
+    }
+  })
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {

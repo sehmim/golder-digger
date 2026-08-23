@@ -1,0 +1,16 @@
+:root {
+  /* The five foundational application colors. */
+  --color-background: #eceee8;
+  --color-surface: #f8f9f5;
+  --color-text: #23241f;
+  --color-muted: #65685f;
+  --color-accent: #756242;
+
+  /* Structural values derived from the five colors above. */
+  --color-border: color-mix(in srgb, var(--color-muted) 28%, transparent);
+  --color-hover: color-mix(in srgb, var(--color-muted) 10%, transparent);
+
+  /* Meaningful status exceptions. */
+  --color-success: #7d9669;
+  --color-error: #a3402a;
+}

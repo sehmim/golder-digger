@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { baseName } from '../lib/api'
-import type { SessionSample, SessionSet } from '../lib/api'
-import { progressOf } from '../lib/useIngest'
-import type { IngestJob } from '../lib/useIngest'
+import { baseName } from '../../../application/api'
+import type { SessionSample, SessionSet } from '../../../application/api'
+import { progressOf } from '../../../application/useIngest'
+import type { IngestJob } from '../../../application/useIngest'
 
 interface ProjectStepProps {
   ingestJobs: IngestJob[]

@@ -1,144 +1,273 @@
 # Desktop app
 
-`golders-desktop/` — Electron + React + TypeScript, bundled by electron-vite.
+`golders-desktop/` is the Electron, React, and TypeScript client. Electron is
+bundled by electron-vite; the engine remains a Python FastAPI process.
 
-```
-src/
-  main/index.ts     window, IPC handlers, job polling, lifecycle
-  main/api.ts       spawns Python, health-checks, HTTP client
-  preload/index.ts  the entire contextBridge surface
-  renderer/src/
-    App.tsx         step machine + transition
-    steps/          SourcesStep, ProjectStep, DigStep
-    components/Knob.tsx  the DISTANCE dial
-    lib/api.ts      response types mirrored from the Python API
-    lib/useIngest.ts  ingest jobs as the UI sees them
-    lib/usePreview.ts audition one chunk at a time
-    styles.css      all styling; custom properties on :root
+## Process boundary
+
+```text
+React renderer
+    │ window.desktop.*
+preload context bridge
+    │ IPC
+Electron main process
+    │ HTTP on 127.0.0.1:8420
+Python API
 ```
 
-## Process model
+The renderer never opens a socket. `sandbox: true` and
+`contextIsolation: true` remain enabled. Main owns dialogs, API requests, job
+polling, and the Python child-process lifecycle. Preload exposes the deliberately
+small `window.desktop` surface.
 
-`sandbox: true`, `contextIsolation: true`, and **the renderer never opens a socket.**
-Main owns the child process and the fetch client; the renderer sees only
-`window.desktop.*`.
+Main adopts a compatible API already listening on port 8420; otherwise it starts
+one. See [architecture.md](architecture.md) for the complete engine lifecycle and
+[api.md](api.md) for HTTP routes.
 
-This is not ceremony. A renderer-side fetch to `127.0.0.1:8420` is blocked by CORS —
-which is exactly what happens if you try to preview the renderer in a plain browser
-without proxying. In Electron the fetch runs in node, so there is no CORS story at all.
+## Renderer architecture
 
-`src/main/api.ts` adopts an already-listening server instead of spawning a second one —
-but only if `/health` carries the `HEALTH_MARKER` field (`essentia`). An older server
-without it is refused with a message instead of being adopted and then 404-ing every
-newer route. See `architecture.md` for the interpreter resolution.
+The renderer has three layers:
+
+```text
+App
+└── ApplicationStateProvider       shared information and actions
+    └── RendererShell              active interface and interface diagnostics
+        ├── GoldDiggerApp          sibling interface
+        ├── GoldenApp              sibling interface
+        ├── DevApp                 sibling interface
+        └── SettingsApp            sibling interface
+```
+
+All four interface roots stay mounted. The shell uses `hidden` to expose one at
+a time, allowing interface-local state to survive while comparing UIs
+back-to-back.
+
+An interface may depend on the application layer and shared components. It must
+not import UI components, styling, or local navigation state from another
+interface.
+
+## Source layout
+
+```text
+src/renderer/src/
+  App.tsx
+  main.tsx
+
+  application/
+    ApplicationState.tsx    provider, shared state, shared actions
+    api.ts                   renderer-side API response types
+    useIngest.ts             ingest jobs and progress events
+
+  shell/
+    RendererShell.tsx        selects and keeps interfaces mounted
+
+  interfaces/
+    gold-digger/
+      GoldDiggerApp.tsx
+      types.ts
+      usePreview.ts
+      components/Knob.tsx
+      steps/
+        SourcesStep.tsx
+        ProjectStep.tsx
+        DigStep.tsx
+    golden/
+      GoldenApp.tsx
+      GoldenKnob.tsx
+    dev/
+      DevApp.tsx
+    settings/
+      SettingsApp.tsx
+    README.md
+
+  shared/
+    components/InterfaceMenu.tsx
+    interfaceNavigation.ts
+    theme.css
+
+  styles.css
+  vite-env.d.ts
+```
+
+## State ownership
+
+State belongs at the lowest layer that truthfully owns it.
+
+### Shared application state
+
+`ApplicationStateProvider` currently owns:
+
+- API readiness and startup errors.
+- Directory roots represented by tracked ingest jobs.
+- Ingest and Essentia job rows, progress, and errors.
+- The connected Ableton project (`SessionSet`).
+- Application settings, currently the selected Golden knob style.
+
+It also exposes the actions that operate on this information: choose directories,
+start ingest, run Essentia, dismiss or clear jobs, connect a project, and select a
+knob style.
+
+The `directories` collection is not a persisted folder registry. It is derived
+from roots attached to currently tracked ingest jobs. Dev labels it accordingly.
+
+### Shell state
+
+`RendererShell` owns:
+
+- The active `InterfaceId`.
+- The latest Gold Digger diagnostic snapshot shown by Dev.
+- Shortcut subscriptions and their development fallback.
+
+The destination union and labels live in `shared/interfaceNavigation.ts`, not in
+individual interfaces.
+
+### Interface-local state
+
+- Gold Digger owns its current workflow step, leaving panel, transition timers,
+  and one-time advancement guards.
+- Golden UI owns the knob's current numeric position.
+- The shared interface menu owns whether its dropdown is open.
+
+Gold Digger's current step is useful to Dev, but it is not application state. It
+is passed to the shell as namespaced `GoldDiggerDiagnostics` and displayed as
+interface state.
+
+## Interfaces
+
+### Gold Digger App
+
+The primary product interface has three steps:
+
+```text
+sources ── ingest ready ──▶ project ── project connected ──▶ dig
+```
+
+`SourcesStep` chooses and ingests directories. `ProjectStep` connects an Ableton
+set, resolves its samples, and ingests missing files. `DigStep` ranks and auditions
+candidate chunks. This workflow and its knob are intentionally isolated inside
+`interfaces/gold-digger/`.
+
+### Golden UI
+
+Golden UI is an experimental interface built from a blank canvas. It currently
+contains one centered, draggable knob and the shared interface menu. Its knob
+position is local UI state; its visual style comes from shared application
+settings.
+
+The knob responds to vertical pointer dragging and arrow keys. It has no engine
+behavior yet.
+
+### Dev
+
+Dev is the developer-facing view of truthful state. It shows shared application
+state and explicitly namespaced Gold Digger diagnostics. It should not manufacture
+placeholder values merely to fill the page.
+
+### Settings
+
+Settings owns configuration UI, not the configuration itself. Selecting Classic,
+Dark, or Minimal updates shared application settings, which Golden UI consumes.
+
+## Interface navigation
+
+`InterfaceMenu` is the first shared renderer component. Golden UI, Dev, and
+Settings currently render it in the top-right. Gold Digger has no interface menu
+yet.
+
+The component reads its destinations from the shared registry. It always keeps
+the same destination order, disables the current interface, closes after
+navigation, closes on outside click, and closes on Escape.
+
+Keyboard destinations are fixed:
+
+| Shortcut | Destination |
+|---|---|
+| `Command-Option-D` | Dev |
+| `Command-Option-S` | Settings |
+
+The focused Electron window captures these combinations in main and sends an IPC
+event through preload. The shell also has a renderer `keydown` fallback. The
+fallback matters during development because renderer code hot-reloads while a
+new main/preload bridge normally requires restarting Electron.
+
+## Theme
+
+`shared/theme.css` is the single source of palette truth. It defines five
+foundational colors:
+
+```css
+--color-background
+--color-surface
+--color-text
+--color-muted
+--color-accent
+```
+
+Borders, hover states, shadows, disabled states, and transparency derive from
+those values. `--color-success` and `--color-error` are explicit semantic
+exceptions. Renderer CSS contains no other literal colors.
+
+New interfaces should use these tokens directly. A new literal belongs in the
+theme only when it communicates meaning that the five colors cannot.
 
 ## IPC surface
 
-| Channel | Direction | |
+| Channel | Direction | Purpose |
 |---|---|---|
-| `directory:select` | invoke | multi-select folder dialog |
-| `project:select` | invoke | `.als` file dialog |
-| `api:status` | invoke | `{ready, error}` |
-| `ingest:start` | invoke | `roots[]` → `job_id`, and starts a poller |
-| `session:load` | invoke | path → `SessionSet` |
-| `session:analyze` | invoke | `(contextIds, distance, k)` → `AnalyzeResult` |
-| `chunk:audio` | invoke | `chunk_id` → WAV bytes as an `ArrayBuffer` |
-| `essentia:start` | invoke | `root` → `job_id`, watched by the same poller |
-| `essentia:summary` | invoke | coverage + agreement, and whether it can run here |
-| `ingest:progress` | send | one per poll, per job |
-| `ingest:error` | send | poller gave up |
-| `api:ready` | send | Python finished booting (or failed) |
+| `directory:select` | invoke | Multi-select folder dialog. |
+| `project:select` | invoke | Ableton `.als` file dialog. |
+| `api:status` | invoke | API readiness and startup error. |
+| `ingest:start` | invoke | Start ingest and return a job ID. |
+| `session:load` | invoke | Resolve an Ableton set. |
+| `session:analyze` | invoke | Rank candidates for context and distance. |
+| `chunk:audio` | invoke | Return preview WAV bytes. |
+| `essentia:start` | invoke | Start an Essentia job. |
+| `essentia:summary` | invoke | Return coverage and availability. |
+| `ingest:progress` | send | Push a polled job reading to the renderer. |
+| `ingest:error` | send | Report that a job poller failed. |
+| `api:ready` | send | Report Python startup completion or failure. |
+| `dev:toggle` | send | Open Dev. The historical channel name remains. |
+| `settings:open` | send | Open Settings. |
 
-Progress is **pushed, not polled by the UI**. Main polls `/ingest/status` every 400ms
-and broadcasts; `useIngest` stitches each reading onto the row that started it, keyed by
-`job_id`. A reading for an unknown job is ignored, so several hook instances can coexist.
+Progress is pushed to the renderer. Main polls the API every 400 ms, and
+`useIngest` stitches readings onto jobs started by the UI.
 
-Audio arrives as **bytes over IPC, not a URL**. A `<audio src="http://127.0.0.1:8420/...">`
-would work in Electron, but it is a second route from the renderer to the API and it
-would outlive `contextIsolation` as the only thing keeping the two apart. `usePreview`
-turns the bytes into a blob URL and caches it per chunk, because sweeping the dial back
-and forth re-lists the same candidates and each render costs a librosa decode.
+## Adding another interface
 
-## UI flow
+1. Create a new sibling directory under `interfaces/`.
+2. Give it a root component and keep its rendering state inside that directory.
+3. Consume shared information and actions through `useApplication`.
+4. Add its ID and label to `shared/interfaceNavigation.ts`.
+5. Mount it as a sibling in `RendererShell`.
+6. Add the shared menu only when the interface design calls for it.
+7. If Dev needs local diagnostics, expose a separately named snapshot rather
+   than moving UI state into the application provider.
+8. Use the shared theme tokens and add no new literal color casually.
 
-Three steps in `App.tsx`. `step` is where you are, `leaving` is the step still mounted
-for the length of the handoff:
+## Development and verification
 
-```
-sources ──first job finishes──▶ project ──"start digging"──▶ dig
-   ▲                              ▲   │                       │
-   └──── back / continue ─────────┘   └───────── back ────────┘
-```
-
-During a transition both panels are mounted in the same CSS grid cell: the outgoing one
-blurs and slides up, the incoming one rises from below. `hasAdvanced` is a ref so the
-handoff fires exactly once — returning to step 1 and ingesting more does not yank the
-screen away again, which is why the explicit "Continue to your project →" affordance
-exists.
-
-The step machine will not hand over while **any** job is still moving. Ingest now runs
-Essentia per file, so a folder is characterised only when its job says finished —
-advancing on the first finished row would have shown the project step over a corpus that
-was still being written.
-
-**Step 2 is automatic end to end**: resolve the set, ingest whatever it references that
-the corpus lacks, resolve again, then hand over to the dig 1.4s later. The buttons stay
-as manual overrides. Both automations are guarded by refs keyed on the set's path — a
-failed sample cannot loop the auto-ingest, and a set that was already dug never
-auto-advances again, so the dig step's back button actually goes back (`dugSet` prop
-seeds the card and swaps the passive status line for a "Back to digging" button).
-
-**Step 1** starts one job per folder, so each folder gets its own row and its own
-progress. Once a folder is ingested, a **Second opinion** block offers the Essentia pass
-over the same roots. Those jobs share the `IngestJob` row type — `kind` separates them,
-because an Essentia job reports a phase where an ingest reports a file count — and a
-failed pass shows the reason in place of the count rather than raising a banner. **Step 2** loads the set, lists matched and unmatched samples in the same row
-component, and offers a single multi-root job for the missing ones. When that job
-finishes, `ProjectStep` re-resolves the set and the rows flip. It then hands the whole
-`SessionSet` up to `App`, which is what `DigStep` runs on.
-
-**Step 3** is one dial and one list. The knob has eleven detents mapped onto the API's
-0-100 novelty percentile: detents rather than a continuous sweep because a producer wants
-to say "one notch further out" and be able to get back. Each change re-runs
-`/session/analyze` after a 220ms settle, and a generation counter drops the answers to
-superseded requests so a fast sweep cannot land out of order. Rows play through
-`usePreview`, one at a time.
-
-## Styling
-
-One stylesheet, custom properties on `:root`, no framework and no CSS-in-JS. Ingest rows
-and Live-set sample rows share `.selections li` / `.sample-list li` deliberately — the
-two lists are meant to read as the same object.
-
-Row states are driven by `data-status` (`scanning` / `ready` / `missing`), not by
-conditional class strings.
-
-The knob is CSS, not canvas or SVG: the face is a rotated `div` with a radial gradient,
-and the eleven ticks are rotated spans placed by `transform-origin: 50% 0`. It is a
-`role="slider"`, so it takes arrow keys, Home and End as well as drag and wheel.
-
-## Commands
+From `golders-desktop/`:
 
 ```bash
-npm run dev                          # electron-vite, spawns the API
-npm run build                        # bundle to out/
-npx tsc --noEmit -p tsconfig.json    # the only static check; there is no linter
-npm run package                      # electron-builder --dir
+npm run dev
+npx tsc --noEmit -p tsconfig.json
+npm run build
+npm run package
 ```
 
-## Not solved yet
+For the complete stack, use the repository `start.sh`. Personal launchers and
+timestamped frontend, backend, and master logs are documented in
+`golders-desktop/dean/README.md`.
 
-- **Packaging.** `config.DB_PATH` points into the repo, and the spawn assumes the repo
-  checkout is the app's parent. Both need to change before a distributable build:
-  `app.getPath('userData')` for the database, and a bundled interpreter (PyInstaller
-  sidecar or similar) instead of `.venv`.
-- **Drag-and-drop** of a `.als` opens the picker instead of reading the drop, because
-  the browser hands over a filename rather than a path.
-- **No cancel.** Python exposes none, so dismissing a running row only hides it.
-- **Preview needs the file on disk.** `GET /chunk/{id}/audio` decodes the original
-  file with librosa; a sample that moved since ingest returns 500 and the row shows the
-  error rather than silently doing nothing.
-- **No waveform.** Rows play, but there is no scrub bar and no visual of the chunk.
-- **Tags need a re-ingest.** Chunks written before the tag classifier landed have
-  `tags = NULL` and `role_source = 'mock'`; the rows simply show no chips until the
-  folder is ingested again.
+When main or preload changes, restart Electron before diagnosing a missing IPC
+method. Renderer-only edits hot-reload.
+
+## Known limitations
+
+- Application settings are in memory and are not persisted across launches.
+- Packaging still assumes a repository checkout and local Python environment.
+- Python exposes no ingest cancellation; dismissing a row only removes it from
+  the renderer.
+- Golden UI's knob is visual and has no engine action yet.
+- Most interface styling still resides in `styles.css`; component and
+  interface-specific stylesheet extraction remains future cleanup.

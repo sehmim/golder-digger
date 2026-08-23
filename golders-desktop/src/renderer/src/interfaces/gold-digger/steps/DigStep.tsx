@@ -5,9 +5,9 @@
  * allowed through, so the only thing left to steer is how far out to look.
  */
 import { useEffect, useRef, useState } from 'react'
-import { baseName } from '../lib/api'
-import type { AnalyzeResult, Candidate, SessionSet } from '../lib/api'
-import { usePreview } from '../lib/usePreview'
+import { baseName } from '../../../application/api'
+import type { AnalyzeResult, Candidate, SessionSet } from '../../../application/api'
+import { usePreview } from '../usePreview'
 import Knob, { MAX, MIN } from '../components/Knob'
 
 interface DigStepProps {

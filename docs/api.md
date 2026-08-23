@@ -110,7 +110,7 @@ API stays importable without them.
 
 - Reload the corpus if you wrote chunks: `state["corpus"] = ingest.load_corpus(conn)`.
 - Mirror the response type in `golders-desktop/src/main/api.ts` **and**
-  `golders-desktop/src/renderer/src/lib/api.ts` — the two bundles cannot share a module,
+  `golders-desktop/src/renderer/src/application/api.ts` — the two bundles cannot share a module,
   so the types are duplicated by design.
 - Add an IPC handler in `src/main/index.ts` and a method in `src/preload/index.ts`;
   the renderer must not fetch directly.

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { baseName } from '../lib/api'
-import type { EssentiaSummary } from '../lib/api'
-import { progressOf } from '../lib/useIngest'
-import type { IngestJob } from '../lib/useIngest'
+import { baseName } from '../../../application/api'
+import type { EssentiaSummary } from '../../../application/api'
+import { progressOf } from '../../../application/useIngest'
+import type { IngestJob } from '../../../application/useIngest'
 
 const FOLDER_PATH =
   'M3.5 6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11Z'

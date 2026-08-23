@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { AnalyzeResult, ApiStatus, EssentiaSummary, SessionSet } from './lib/api'
+import type { AnalyzeResult, ApiStatus, EssentiaSummary, SessionSet } from './application/api'
 
 declare global {
   interface Window {
@@ -27,6 +27,8 @@ declare global {
       onIngestProgress: (handler: (status: unknown) => void) => () => void
       onIngestError: (handler: (payload: unknown) => void) => () => void
       onApiReady: (handler: (status: unknown) => void) => () => void
+      onDevPageToggle?: (handler: () => void) => () => void
+      onSettingsPageOpen?: (handler: () => void) => () => void
     }
   }
 }

@@ -37,5 +37,17 @@ contextBridge.exposeInMainWorld('desktop', {
     const listener = (_event: IpcRendererEvent, status: unknown): void => handler(status)
     ipcRenderer.on('api:ready', listener)
     return () => ipcRenderer.off('api:ready', listener)
+  },
+
+  onDevPageToggle: (handler: () => void): (() => void) => {
+    const listener = (): void => handler()
+    ipcRenderer.on('dev:toggle', listener)
+    return () => ipcRenderer.off('dev:toggle', listener)
+  },
+
+  onSettingsPageOpen: (handler: () => void): (() => void) => {
+    const listener = (): void => handler()
+    ipcRenderer.on('settings:open', listener)
+    return () => ipcRenderer.off('settings:open', listener)
   }
 })
