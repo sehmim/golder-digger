@@ -164,7 +164,13 @@ def spectral_stats(y, sr) -> dict[str, dict[str, float]]:
 # ---------------------------------------------------------------- tonalness
 
 def hpss_split(y) -> tuple[np.ndarray, np.ndarray]:
-    """Harmonic/percussive source separation. One call per file, sliced per chunk."""
+    """Harmonic/percussive source separation. One call per file, sliced per chunk.
+
+    Measured before "optimizing": skipping the percussive ISTFT and reading
+    energies off the masked spectrograms instead was 1.00x -- the median
+    filtering dominates and the reconstruction is noise. The two-signal shape
+    stays because it is the cheap part.
+    """
     return librosa.effects.hpss(y)
 
 

@@ -68,7 +68,15 @@ answer overrides the hash-derived one, and 0 BPM is stored as `NULL` because it 
 "one-shot", not "no tempo". Chroma and the CLAP vector stay synthetic, so **Fit's
 harmony term and Novelty are still fiction under mock**. It also dominates ingest time
 — a second on a short sample, ~20s on a seven-minute stem — so
-`GOLDDIGGER_ESSENTIA=0` restores the ~150 files/second mock speed.
+`GOLDDIGGER_ESSENTIA=0` restores the ~150 files/second mock speed. **Only mock runs it
+inline**: in real mode nothing on the Fit/Novelty path reads it, so `run_job` publishes
+the corpus first (`on_corpus_ready`) and collects the second opinion as a tail of the
+same job, healing files ingested with the flag off along the way.
+
+**Re-ingests skip unchanged files without hashing them.** `files.size`/`files.mtime`
+are the voucher: a path whose stat matches skips straight to done, so re-walking a
+finished library is near-instant instead of re-reading every byte. NULL stat columns
+(failed files, pre-migration rows) never skip.
 
 **Ingest spreads hashing and Essentia over a process pool** (`INGEST_WORKERS`, default
 cpu_count-1; `GOLDDIGGER_WORKERS` overrides). Processes, not threads: MusicExtractor

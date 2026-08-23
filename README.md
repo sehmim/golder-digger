@@ -98,8 +98,17 @@ salience, danceability and loudness, keyed by file hash in its own table.
 (`GOLDDIGGER_ESSENTIA=0` opts out; a Docker-only machine gets one folder-wide
 pass at the end of the job), spread over a process pool — it is the slowest thing
 in an ingest by an order of magnitude, and it holds the GIL, so threads buy
-nothing. `GOLDDIGGER_WORKERS` sets the pool size; the default is cpu_count-1. `golddigger essentia <root>` still exists as a
-re-run over a folder that was ingested without it.
+nothing. `GOLDDIGGER_WORKERS` sets the pool size; the default is cpu_count-1.
+
+**In real mode it runs as a tail, not a gate.** Measured inline it was 47% of
+ingest wall time, ahead of chunk rows it never changes — nothing on the
+Fit/Novelty path reads it there. So the job publishes the corpus as soon as the
+chunks are done and collects the second opinion afterwards, under the same
+progress row (`essentia second opinion (i/n)`); a folder ingested with
+`GOLDDIGGER_ESSENTIA=0` is healed by the next ingest's tail without re-chunking
+anything. Mock keeps it inline because there the chunk rows themselves consume
+the record. `golddigger essentia <root>` still exists as a re-run over a folder
+that was ingested without it.
 
 Under `GOLDDIGGER_MOCK=1` it is also the only real measurement in the pipeline,
 so its key and tempo replace the hash-derived ones on the chunk rows — a 0 BPM
@@ -179,6 +188,10 @@ Things that are the way they are on purpose:
   *already picked*, which is undefined in a one-shot top-K.
 - **Results never share a file with the context.** Otherwise DISTANCE 10 just
   hands back the neighbouring bars of the clip you already have.
+- **Re-ingesting a finished library costs a stat per file, not a hash.** The
+  stored (size, mtime) vouches for the bytes; anything touched, edited, failed,
+  or below the current standard (synthetic vectors, a missing second opinion
+  under mock) still takes the slow path and gets repaired.
 
 ## Not built yet
 

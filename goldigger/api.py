@@ -162,8 +162,15 @@ async def start_ingest(req: IngestReq):
     def _work():
         # its own connection: this runs on a worker thread -- see db.thread_conn
         worker = db.thread_conn()
-        ingest.run_job(worker, job_id, targets)
-        return ingest.load_corpus(worker)
+
+        def _publish():
+            # the chunks are final before the Essentia tail runs, so the corpus
+            # goes live here -- results are askable while the second opinion
+            # is still being collected
+            state["corpus"] = ingest.load_corpus(worker)
+
+        ingest.run_job(worker, job_id, targets, on_corpus_ready=_publish)
+        return state["corpus"]
 
     async def _run():
         # extraction is CPU/GPU bound and releases the GIL, so a thread is enough

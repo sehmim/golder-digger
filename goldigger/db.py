@@ -47,7 +47,13 @@ CREATE TABLE IF NOT EXISTS files (
   duration    REAL,
   status      TEXT,
   error       TEXT,
-  ingested_at TEXT
+  ingested_at TEXT,
+  -- The stat pair that lets a re-ingest skip the hash: a path whose size and
+  -- mtime still match was not edited, so its bytes still carry this row's hash.
+  -- NULL means "never skip" -- rows from before the columns existed, and failed
+  -- files, which must retry.
+  size        INTEGER,
+  mtime       REAL
 );
 
 -- Essentia is a second opinion on whole files, not chunks: MusicExtractor takes
@@ -155,6 +161,10 @@ MIGRATIONS = {
         "synthetic": "INTEGER",
         "bpm_source": "TEXT",
         "key_source": "TEXT",
+    },
+    "files": {
+        "size": "INTEGER",
+        "mtime": "REAL",
     },
 }
 

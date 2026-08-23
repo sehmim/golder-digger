@@ -167,6 +167,8 @@ def extract_local(path: Path, essentia: dict | None = None,
     # one HPSS pass per file, sliced per chunk: the separation needs surrounding
     # context to be meaningful, and it is far too slow to repeat per chunk
     y_harm, y_perc = features.hpss_split(y)
+    # and one resample: per chunk it re-ran the same filter once per bar
+    y_clap = librosa.resample(y, orig_sr=sr, target_sr=config.CLAP_SR)
 
     rows, clips = [], []
     for i, (t0, t1) in enumerate(spans):
@@ -187,7 +189,7 @@ def extract_local(path: Path, essentia: dict | None = None,
             tempo_confidence=features.tempo_confidence(seg, sr, rhythm["bpm"]),
             spectral=features.spectral_stats(seg, sr), tags=None,
             chroma=ch, clap=None, synthetic=0))
-        clips.append(librosa.resample(seg, orig_sr=sr, target_sr=config.CLAP_SR))
+        clips.append(y_clap[int(t0 * config.CLAP_SR):int(t1 * config.CLAP_SR)])
 
     return rows, clips
 
@@ -395,11 +397,46 @@ def drop_stale(conn, path: str, file_hash: str) -> int:
     return cur.rowcount
 
 
-def run_job(conn, job_id: str, roots):
+def _stat_pair(path) -> tuple[int | None, float | None]:
+    """(size, mtime) exactly as the fast-path will compare them; Nones when the
+    file cannot be statted, which reads as "never skip"."""
+    try:
+        st = Path(path).stat()
+        return st.st_size, st.st_mtime
+    except OSError:
+        return None, None
+
+
+def _extract_essentia(item: tuple[str, str]) -> tuple[str, str, dict | None]:
+    fh, path = item
+    try:
+        return fh, path, essentia_runner.extract_one(path)
+    except Exception:
+        return fh, path, None   # a file essentia cannot read is not a failed ingest
+
+
+def _essentia_records(items, workers: int):
+    """(file_hash, path, record) per item, for the deferred second-opinion tail.
+
+    Pooled for the same reason the inline pass was: MusicExtractor holds the GIL
+    for its whole run, so processes are the only parallelism that counts."""
+    if workers <= 1 or len(items) <= 1:
+        for item in items:
+            yield _extract_essentia(item)
+        return
+    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as pool:
+        yield from pool.map(_extract_essentia, items)
+
+
+def run_job(conn, job_id: str, roots, on_corpus_ready=None):
     """Synchronous body of an ingest job. Called from a background task.
 
     `roots` is one folder/file or a list of them. `jobs.message` carries the file
     currently being analyzed so a UI can name it while it waits.
+
+    `on_corpus_ready` fires once the chunk rows are final -- before the Essentia
+    tail, whose second opinion never changes them -- so the caller can publish
+    the corpus while that tail is still running.
     """
     now = dt.datetime.now(dt.UTC).isoformat()
     paths = walk_all(roots)
@@ -409,12 +446,20 @@ def run_job(conn, job_id: str, roots):
 
     # Native only: a container per file would cost more than the analysis, so a
     # Docker-only machine gets one folder-wide pass after the loop instead.
-    inline_essentia = (config.ESSENTIA_ON_INGEST
-                       and essentia_runner.essentia_available_natively())
+    # Inline only under mock, where the chunk rows themselves consume the record
+    # (it is the one real measurement mock has). In real mode nothing on the
+    # Fit/Novelty path reads it -- it was measured at 47% of ingest wall time and
+    # buys the user nothing until they ask for a second opinion -- so it runs as
+    # a tail, after the corpus is already live.
+    native = essentia_runner.essentia_available_natively()
+    inline_essentia = config.ESSENTIA_ON_INGEST and native and config.MOCK
+    deferred_essentia = config.ESSENTIA_ON_INGEST and native and not config.MOCK
 
     # "Already done" means done to the current standard. A file ingested before
     # Essentia was part of ingest still has hash-derived key and tempo, so it is
     # not skipped -- otherwise the dedupe would permanently freeze a stale corpus.
+    # The deferred tail is not part of the chunk standard: it repairs a missing
+    # second opinion on its own, without re-chunking anything.
     if inline_essentia:
         seen = {r["file_hash"] for r in conn.execute(
             "SELECT f.file_hash FROM files f JOIN essentia e ON e.file_hash = f.file_hash"
@@ -434,6 +479,30 @@ def run_job(conn, job_id: str, roots):
             " WHERE synthetic IS NULL OR synthetic = 1")}
     done = failed = relinked = dropped = 0
 
+    # A file whose stored (size, mtime) still matches disk skips even the hash:
+    # re-ingesting an already-done library costs a stat per file instead of
+    # reading every byte back to conclude nothing changed. The stat only vouches
+    # for a row that meets today's standard -- `seen` -- so anything substandard
+    # (synthetic vectors, a pre-Essentia mock row) still takes the slow path and
+    # gets repaired. Same path, same bytes: nothing for relink or drop_stale.
+    known = {r["path"]: (r["file_hash"], r["size"], r["mtime"])
+             for r in conn.execute(
+                 "SELECT path, file_hash, size, mtime FROM files WHERE status='ok'")}
+    todo = []
+    for p in paths:
+        fh, size, mtime = known.get(str(p), (None, None, None))
+        try:
+            st = p.stat() if fh in seen and size is not None else None
+        except OSError:
+            st = None           # vanished since the walk: let the slow path name it
+        if st is not None and st.st_size == size and st.st_mtime == mtime:
+            done += 1
+        else:
+            todo.append(p)
+    if done:
+        conn.execute("UPDATE jobs SET done=? WHERE job_id=?", (done, job_id))
+        conn.commit()
+
     # The workers extract as well as hash. Without this the serial loop below is
     # 89% of ingest -- Essentia 47%, HPSS 35%, chroma/key 5% -- and the pool
     # covers only the hash; with it the split inverts and CLAP is all that is
@@ -445,7 +514,7 @@ def run_job(conn, job_id: str, roots):
 
     # The message now names the file that just came back rather than the one
     # about to start: with a pool ahead of this loop there are several of those.
-    for record in prepared(paths, seen, inline_essentia, config.INGEST_WORKERS,
+    for record in prepared(todo, seen, inline_essentia, config.INGEST_WORKERS,
                            analyze=analyze_in_pool):
         path = Path(record["path"])
         conn.execute("UPDATE jobs SET message=? WHERE job_id=?", (str(path), job_id))
@@ -482,22 +551,59 @@ def run_job(conn, job_id: str, roots):
                         essentia.get("key_key")) is not None
                     essentia_runner.merge_one(conn, fh, path, essentia, commit=False,
                                               compare=not seeded)
+                size, mtime = _stat_pair(path)
                 conn.execute(
-                    "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO files"
+                    " (file_hash, path, duration, status, error, ingested_at, size, mtime)"
+                    " VALUES (?,?,?,?,?,?,?,?)",
                     (fh, str(path), rows[-1]["t_end"], "ok", None,
-                     dt.datetime.now(dt.UTC).isoformat()))
+                     dt.datetime.now(dt.UTC).isoformat(), size, mtime))
                 seen.add(fh)
+            else:
+                # A dedupe skip still refreshes the stat: a touched file keeps
+                # its content hash, and without this it would be re-hashed on
+                # every future ingest to rediscover that. Keyed by path too --
+                # a duplicate of this content elsewhere has its own stat.
+                size, mtime = _stat_pair(path)
+                if size is not None:
+                    conn.execute("UPDATE files SET size=?, mtime=?"
+                                 " WHERE file_hash=? AND path=?",
+                                 (size, mtime, fh, str(path)))
             done += 1
         except Exception as exc:
             failed += 1
-            conn.execute("INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?)",
+            # size/mtime stay NULL on purpose: a failed file never fast-paths,
+            # so it is retried on every ingest until it succeeds or is removed.
+            conn.execute("INSERT OR REPLACE INTO files"
+                         " (file_hash, path, duration, status, error, ingested_at)"
+                         " VALUES (?,?,?,?,?,?)",
                          (str(path), str(path), None, "failed",
                           f"{exc}\n{traceback.format_exc(limit=3)}",
                           dt.datetime.now(dt.UTC).isoformat()))
         conn.execute("UPDATE jobs SET done=?, failed=? WHERE job_id=?", (done, failed, job_id))
         conn.commit()
 
-    if config.ESSENTIA_ON_INGEST and not inline_essentia and essentia_runner.runner_mode():
+    # Every chunk row is final from here on: the tails below only write the
+    # essentia table. This is the moment the corpus is worth publishing.
+    if on_corpus_ready is not None:
+        on_corpus_ready()
+
+    if deferred_essentia:
+        walked = {str(p) for p in paths}
+        missing = [(r["file_hash"], r["path"]) for r in conn.execute(
+            "SELECT f.file_hash, f.path FROM files f"
+            " LEFT JOIN essentia e ON e.file_hash = f.file_hash"
+            " WHERE f.status='ok' AND e.file_hash IS NULL")
+            if r["path"] in walked]
+        for i, (fh, path, rec) in enumerate(
+                _essentia_records(missing, config.INGEST_WORKERS), 1):
+            if rec:
+                essentia_runner.merge_one(conn, fh, path, rec, commit=False)
+            conn.execute("UPDATE jobs SET message=? WHERE job_id=?",
+                         (f"essentia second opinion ({i}/{len(missing)})", job_id))
+            conn.commit()
+
+    if config.ESSENTIA_ON_INGEST and not native and essentia_runner.runner_mode():
         conn.execute("UPDATE jobs SET message='essentia (docker)' WHERE job_id=?", (job_id,))
         conn.commit()
         for root in (roots if isinstance(roots, (list, tuple)) else [roots]):
