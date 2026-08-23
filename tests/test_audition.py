@@ -174,3 +174,31 @@ def test_context_bed_is_built_once(tmp_path, monkeypatch):
     assert calls == len(rows)
     assert first is second
     audition.clear_caches()
+
+
+# ---------------------------------------------------------------- waveform peaks
+
+def test_peaks_returns_exactly_the_buckets_asked_for():
+    """The drawing code indexes by bucket, so a short file must still fill them.
+
+    A file whose length does not divide evenly is padded, not truncated -- a
+    truncated last bucket would draw a waveform that ends before the audio does.
+    """
+    assert len(audition.peaks(np.ones(7, dtype=np.float32), 4)) == 4
+    assert len(audition.peaks(np.ones(4000, dtype=np.float32), 200)) == 200
+
+
+def test_peaks_keeps_both_signs():
+    """Min and max, not one absolute amplitude: the asymmetry is the shape.
+
+    A kick drawn from absolute peaks alone looks like a symmetrical blob, which
+    is precisely the visual cue that tells one sample from another in a list.
+    """
+    y = np.concatenate([np.full(10, 0.9, np.float32), np.full(10, -0.2, np.float32)])
+
+    assert audition.peaks(y, 2) == [[0.9, 0.9], [-0.2, -0.2]]
+
+
+def test_peaks_of_nothing_is_flat_rather_than_an_error():
+    """An empty render is a silent chunk, not a failure -- draw a flat line."""
+    assert audition.peaks(np.zeros(0, dtype=np.float32), 3) == [[0.0, 0.0]] * 3

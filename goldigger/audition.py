@@ -212,6 +212,24 @@ def render_context(rows, target_bpm: float | None, sr: int = config.PREVIEW_SR):
     return _render_context_cached(keys, target_bpm, sr), sr
 
 
+def peaks(y: np.ndarray, buckets: int) -> list[list[float]]:
+    """Min/max per bucket, for drawing a waveform.
+
+    Min *and* max rather than one amplitude per bucket: a waveform drawn from
+    absolute peaks alone loses the asymmetry that makes a kick look like a kick.
+    Padded rather than truncated so the last bucket is not silently short.
+    """
+    y = np.asarray(y, dtype=np.float32).reshape(-1)
+    if y.size == 0:
+        return [[0.0, 0.0]] * buckets
+    per = int(np.ceil(y.size / buckets))
+    padded = np.pad(y, (0, per * buckets - y.size))
+    frames = padded.reshape(buckets, per)
+    lows = frames.min(axis=1)
+    highs = frames.max(axis=1)
+    return [[round(float(lo), 4), round(float(hi), 4)] for lo, hi in zip(lows, highs)]
+
+
 def clear_caches() -> None:
     """Drop cached audio, primarily for tests and an explicit future reload path."""
     _render_context_cached.cache_clear()

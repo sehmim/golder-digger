@@ -26,6 +26,7 @@ state: dict = {"conn": None, "corpus": None}
 _ANALYSIS_CACHE_LIMIT = 32
 _ROOT_MASK_CACHE_LIMIT = 16
 _analysis_cache: OrderedDict[tuple, dict] = OrderedDict()
+_als_cache: OrderedDict[tuple, dict] = OrderedDict()
 _root_mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
 _cache_lock = Lock()
 
@@ -139,11 +140,14 @@ def health():
     c = state["corpus"]
     return {"ok": True, "mock": config.MOCK, "chunks": len(c) if c else 0,
             "synthetic_chunks": int(c.synthetic.sum()) if c else 0,
-            # Pins a build that has /presets and /corpus/stats. src/main/api.ts
-            # refuses to adopt an already-listening server without this field,
-            # which is the only thing standing between a stale `golddigger serve`
-            # and a UI that 404s every route added since it started.
             "presets": [p.key for p in presets.PRESETS],
+            # THE STALE-SERVER MARKER. src/main/api.ts refuses to adopt an
+            # already-listening server that lacks this key, which is the only
+            # thing standing between a leftover `golddigger serve` and a UI that
+            # 404s every route added since it started. Add a NEW key here and
+            # move HEALTH_MARKER to it whenever routes are added -- presence is
+            # what is checked, so changing an existing key's value pins nothing.
+            "chunk_peaks": True,
             "db": str(config.DB_PATH),
             # how ingest will characterise files, before anything is ingested
             "essentia": essentia_runner.runner_mode() if config.ESSENTIA_ON_INGEST else None}
@@ -441,13 +445,23 @@ def _load_als_cached(path: str) -> dict:
     if not os.path.isfile(path):
         raise HTTPException(404, f"no such file: {path}")
     stamp = (path, os.path.getmtime(path))
-    if state.get("als_stamp") != stamp:
-        try:
-            state["als"] = ableton.load_als(path)
-        except ableton.UnreadableSet as exc:
-            raise HTTPException(400, str(exc))
-        state["als_stamp"] = stamp
-    return state["als"]
+
+    cached = _cache_get(_als_cache, stamp)
+    if cached is not None:
+        return cached
+    try:
+        als = ableton.load_als(path)
+    except ableton.UnreadableSet as exc:
+        raise HTTPException(400, str(exc))
+    # Two entries, and stamp-keyed rather than a pair of module globals. The
+    # globals were written one after the other with no lock: FastAPI runs sync
+    # handlers on a threadpool, and opening one set while another was mid-parse
+    # could leave the stamp naming set A next to set B's parse -- after which
+    # every request for A was answered with B until the file changed. Two,
+    # because opening a set and ranking against it are separate requests and a
+    # single slot makes them evict each other.
+    _cache_put(_als_cache, stamp, als, 2)
+    return als
 
 
 def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
@@ -681,6 +695,29 @@ def audio(chunk_id: str, bpm: float | None = Query(None, gt=20, le=300,
     row = _chunk_row(chunk_id)
     y, sr, meta = audition.render_chunk(row, bpm)
     return _audio_response(y, sr, meta)
+
+
+@app.get("/chunk/{chunk_id}/peaks")
+def chunk_peaks(chunk_id: str, buckets: int = Query(240, ge=16, le=2000),
+                bpm: float | None = Query(None, gt=20, le=300,
+                                          description="session tempo, as for playback")):
+    """The waveform of the audio that will actually sound.
+
+    `bpm` is passed through to the same renderer the audio routes use, and at the
+    same PREVIEW_SR, so a drawn shape and the sound behind it are one render
+    rather than two that merely resemble each other. Drawing an unstretched
+    waveform over a stretched preview meant the playhead reached the end of the
+    picture before the audio finished, which reads as playing the wrong sound.
+
+    Renders through the same LRU as playback, so asking for a waveform warms the
+    cache for the play that usually follows it.
+    """
+    row = _chunk_row(chunk_id)
+    y, sr, meta = audition.render_chunk(row, bpm, sr=config.PREVIEW_SR)
+    return {"chunk_id": chunk_id, "buckets": buckets,
+            "duration": round(len(y) / sr, 3),
+            "bpm": row["bpm"], "target_bpm": bpm, "stretched": meta["stretched"],
+            "peaks": audition.peaks(y, buckets)}
 
 
 @app.get("/session/preview")

@@ -37,6 +37,13 @@ contextBridge.exposeInMainWorld('desktop', {
   startEssentia: (root: string): Promise<string> => ipcRenderer.invoke('essentia:start', root),
   essentiaSummary: () => ipcRenderer.invoke('essentia:summary'),
   presets: () => ipcRenderer.invoke('dev:presets'),
+  chunkPeaks: (chunkId: string, buckets?: number, bpm?: number | null) =>
+    ipcRenderer.invoke('chunk:peaks', chunkId, buckets, bpm),
+  // Two calls on purpose: the file has to be on disk before startDrag runs, and
+  // startDrag has to run synchronously inside the dragstart handler.
+  prepareChunkDrag: (chunkId: string, fileName: string): Promise<string> =>
+    ipcRenderer.invoke('chunk:drag-prepare', chunkId, fileName),
+  startChunkDrag: (file: string): void => ipcRenderer.send('chunk:drag-start', file),
   corpusStats: () => ipcRenderer.invoke('dev:corpus-stats'),
   chunkAudio: (chunkId: string, options?: AuditionOptions): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('chunk:audio', chunkId, options ?? {}),

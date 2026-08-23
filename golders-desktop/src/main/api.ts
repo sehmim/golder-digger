@@ -163,7 +163,7 @@ function pythonBin(): string {
  * over from an earlier session gets used silently and then 404s every route
  * added since it started. Checking one field turns that into a message.
  */
-const HEALTH_MARKER = 'presets'
+const HEALTH_MARKER = 'chunk_peaks'
 
 async function healthBody(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
   try {
@@ -332,6 +332,29 @@ export interface CorpusStats {
 
 export function presets(): Promise<PresetList> {
   return request('/presets')
+}
+
+export interface ChunkPeaks {
+  chunk_id: string
+  buckets: number
+  duration: number
+  /** The chunk's own tempo. */
+  bpm: number | null
+  /** The tempo it was rendered to, matching playback. */
+  target_bpm: number | null
+  stretched: boolean
+  /** [min, max] per bucket, of the audio that will sound. */
+  peaks: [number, number][]
+}
+
+export function chunkPeaks(
+  chunkId: string,
+  buckets = 240,
+  bpm?: number | null
+): Promise<ChunkPeaks> {
+  const query = new URLSearchParams({ buckets: String(buckets) })
+  if (bpm) query.set('bpm', String(bpm))
+  return request(`/chunk/${encodeURIComponent(chunkId)}/peaks?${query.toString()}`)
 }
 
 export function corpusStats(): Promise<CorpusStats> {

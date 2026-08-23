@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { baseName } from '../../../application/api'
 import type { AnalyzeResult, Candidate, SessionSet } from '../../../application/api'
+import Waveform from '../../../shared/components/Waveform'
 import { usePreview } from '../usePreview'
 import Knob, { MAX, MIN } from '../components/Knob'
 
@@ -189,6 +190,17 @@ export default function DigStep({ set, activeRoots, onBack }: DigStepProps): Rea
                   <span className="entry" title={candidate.path}>
                     <span className="entry-name">{baseName(candidate.path)}</span>
                     <span className="entry-meta">{meta(candidate)}</span>
+                    <Waveform
+                      chunkId={candidate.chunk_id}
+                      path={candidate.path}
+                      bpm={candidate.bpm}
+                      sessionBpm={set.session.tempo}
+                      playing={isPlaying}
+                      loading={isLoading}
+                      progress={isPlaying ? preview.progress : 0}
+                      onToggle={() => preview.toggle(candidate.chunk_id)}
+                      onSeek={preview.seek}
+                    />
                     {candidate.tags?.length ? (
                       <span className="tags">
                         {candidate.tags.map((tag) => (

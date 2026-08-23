@@ -60,6 +60,20 @@ export interface PresetList {
   fit_floor_min: number
 }
 
+/** Waveform for one chunk, at its own tempo. */
+export interface ChunkPeaks {
+  chunk_id: string
+  buckets: number
+  duration: number
+  /** The chunk's own tempo. */
+  bpm: number | null
+  /** The tempo it was rendered to, matching playback. */
+  target_bpm: number | null
+  stretched: boolean
+  /** [min, max] per bucket. Both, so a waveform keeps its asymmetry. */
+  peaks: [number, number][]
+}
+
 /** Whether the corpus can support the scoring at all. */
 export interface CorpusStats {
   chunks: number
