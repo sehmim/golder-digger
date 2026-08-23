@@ -250,12 +250,33 @@ export function analyze(contextIds: string[], distance: number, k: number): Prom
   })
 }
 
+export interface AuditionOptions {
+  /** Session tempo. The candidate is time-stretched to it before it sounds. */
+  bpm?: number | null
+  /** The session's own chunks, mixed underneath so the pair is judged together. */
+  contextIds?: string[]
+  /** Hear the candidate alone instead of over the session. */
+  candidateOnly?: boolean
+}
+
 /**
  * The chunk's audio as bytes, not a URL: the renderer has no route to the API,
  * and a media element pointing at localhost would be a second way in.
+ *
+ * Rendered through /session/preview rather than the raw chunk endpoint, because
+ * a candidate heard at its own tempo gets judged on the mismatch instead of on
+ * whether it works. Pitch is never shifted -- see goldigger/audition.py.
  */
-export async function chunkAudio(chunkId: string): Promise<ArrayBuffer> {
-  const response = await fetch(`${BASE}/chunk/${encodeURIComponent(chunkId)}/audio`)
+export async function chunkAudio(
+  chunkId: string,
+  options: AuditionOptions = {}
+): Promise<ArrayBuffer> {
+  const query = new URLSearchParams({ candidate: chunkId })
+  if (options.bpm) query.set('bpm', String(options.bpm))
+  if (options.candidateOnly) query.set('candidate_only', 'true')
+  for (const id of options.contextIds ?? []) query.append('context', id)
+
+  const response = await fetch(`${BASE}/session/preview?${query.toString()}`)
   if (!response.ok) throw new Error(`${response.status} could not render ${chunkId}`)
   return response.arrayBuffer()
 }

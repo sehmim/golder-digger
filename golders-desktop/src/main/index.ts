@@ -116,7 +116,9 @@ app.whenReady().then(() => {
 
   ipcMain.handle('essentia:summary', () => api.essentiaSummary())
 
-  ipcMain.handle('chunk:audio', (_event, chunkId: string) => api.chunkAudio(chunkId))
+  ipcMain.handle('chunk:audio', (_event, chunkId: string, options: api.AuditionOptions) =>
+    api.chunkAudio(chunkId, options)
+  )
 
   ipcMain.handle(
     'session:analyze',

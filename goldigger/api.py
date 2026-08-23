@@ -7,10 +7,10 @@ import json
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
-from . import ableton, audition, config, db, essentia_runner, ingest, scoring
+from . import ableton, audition, config, db, essentia_runner, ingest, listening, scoring
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -365,3 +365,205 @@ def preview(candidate: str = Query(..., description="chunk to audition"),
         y = audition.mix(bed, y)
         meta = {**meta, "mixed_with": len(ctx_rows)}
     return _audio_response(y, sr, {**meta, "target_bpm": target})
+
+
+# ---------------------------------------------------------------- listening test
+
+class TrialsReq(BaseModel):
+    context_ids: list[str]
+    batch: str | None = None
+    session_bpm: float | None = None
+
+
+class RatingReq(BaseModel):
+    rater: str
+    scores: dict[str, int | None] = Field(default_factory=dict)
+    note: str | None = None
+
+
+@app.post("/trials/generate")
+def trials_generate(req: TrialsReq):
+    """Build a blind batch for one session context."""
+    corpus = _corpus()
+    try:
+        return listening.generate(_conn(), corpus, req.context_ids,
+                                  batch=req.batch, session_bpm=req.session_bpm)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/trials/next")
+def trials_next(rater: str = Query(..., min_length=1), batch: str | None = None):
+    """The next unrated trial for this rater.
+
+    The response carries audio URLs and nothing else. Which arm produced the
+    candidate, and at what DISTANCE, stay in the database -- putting either on
+    the wire would unblind the experiment.
+    """
+    row = listening.next_trial(_conn(), rater, batch)
+    prog = listening.progress(_conn(), rater, batch)
+    if row is None:
+        return {"trial": None, "progress": prog, "done": True}
+    return {"trial": listening.trial_payload(row), "progress": prog, "done": False}
+
+
+@app.post("/trials/{trial_id}/rate")
+def trials_rate(trial_id: str, req: RatingReq):
+    """Record a rating, then reveal what the trial was -- in that order."""
+    try:
+        return listening.record(_conn(), trial_id, req.rater, req.scores, req.note)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/rate", response_class=HTMLResponse)
+def rate_page():
+    """The rating surface. Deliberately plain: it is an instrument, not a product."""
+    return RATE_HTML
+
+
+RATE_HTML = """<!doctype html>
+<meta charset="utf-8">
+<title>Gold Digger listening test</title>
+<style>
+  :root { color-scheme: dark; --bg:#141613; --fg:#e9ebe4; --dim:#8b9184; --line:#2b302a; --accent:#c9a227; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 system-ui,sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); margin:0 0 4px; }
+  .bar { height:3px; background:var(--line); border-radius:2px; margin:14px 0 26px; }
+  .bar i { display:block; height:100%; background:var(--accent); border-radius:2px; transition:width .2s; }
+  .players { display:flex; gap:8px; margin-bottom:26px; flex-wrap:wrap; }
+  button { font:inherit; color:var(--fg); background:#20241e; border:1px solid var(--line);
+           border-radius:6px; padding:10px 14px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button[data-on] { background:var(--accent); color:#141613; border-color:var(--accent); }
+  fieldset { border:0; border-top:1px solid var(--line); margin:0 0 18px; padding:16px 0 0; }
+  legend { padding:0; font-size:14px; color:var(--fg); }
+  .hint { color:var(--dim); font-size:12.5px; margin:2px 0 10px; }
+  .scale { display:flex; gap:6px; }
+  .scale label { flex:1; text-align:center; }
+  .scale input { position:absolute; opacity:0; pointer-events:none; }
+  .scale span { display:block; padding:9px 0; border:1px solid var(--line); border-radius:6px; cursor:pointer; }
+  .scale input:checked + span { background:var(--accent); color:#141613; border-color:var(--accent); }
+  .scale input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+  .ends { display:flex; justify-content:space-between; color:var(--dim); font-size:12px; margin-top:5px; }
+  textarea { width:100%; background:#20241e; color:var(--fg); border:1px solid var(--line);
+             border-radius:6px; padding:10px; font:inherit; }
+  #submit { width:100%; padding:13px; margin-top:8px; background:var(--accent); color:#141613; border:0; font-weight:600; }
+  #submit:disabled { opacity:.4; cursor:not-allowed; }
+  #reveal { margin-top:18px; color:var(--dim); font-size:13px; min-height:1.6em; }
+  #done { text-align:center; padding:60px 0; color:var(--dim); }
+</style>
+<main>
+  <h1>Listening test</h1>
+  <div id="who" class="hint"></div>
+  <div class="bar"><i id="prog" style="width:0%"></i></div>
+
+  <div id="trial">
+    <div class="players">
+      <button id="p-context" type="button">Your session</button>
+      <button id="p-mix" type="button">Session + candidate</button>
+      <button id="p-solo" type="button">Candidate alone</button>
+    </div>
+    <form id="form"></form>
+    <div id="reveal"></div>
+  </div>
+  <div id="done" hidden>Nothing left to rate. Thank you.</div>
+</main>
+<script>
+const QUESTIONS = {
+  obviousness:      ["How obvious or expected was this suggestion?", "surprising", "obvious"],
+  compatibility:    ["How well could this material work with the session?", "not at all", "very well"],
+  inspiration:      ["Does hearing this make you want to try something?", "not at all", "very much"],
+  discovery:        ["Would you have been likely to find this yourself?", "never", "certainly"],
+  direction_change: ["Does it suggest a direction you had not considered?", "no", "strongly"]
+};
+const params = new URLSearchParams(location.search);
+let rater = params.get("rater") || localStorage.getItem("gd-rater");
+if (!rater) { rater = prompt("Your name or initials:") || "anon"; }
+localStorage.setItem("gd-rater", rater);
+document.getElementById("who").textContent = "rating as " + rater;
+
+const audio = new Audio();
+let current = null, playing = null;
+
+function play(kind, url, button) {
+  if (playing === kind) { audio.pause(); playing = null; paint(); return; }
+  audio.src = url; audio.currentTime = 0;
+  audio.play().then(() => { playing = kind; paint(); }).catch(() => {});
+}
+audio.addEventListener("ended", () => { playing = null; paint(); });
+function paint() {
+  for (const [kind, id] of [["context","p-context"],["mix","p-mix"],["solo","p-solo"]]) {
+    const b = document.getElementById(id);
+    if (playing === kind) b.setAttribute("data-on",""); else b.removeAttribute("data-on");
+  }
+}
+
+function renderForm() {
+  const form = document.getElementById("form");
+  form.innerHTML = Object.entries(QUESTIONS).map(([key, [q, lo, hi]]) => `
+    <fieldset>
+      <legend>${q}</legend>
+      <div class="scale">
+        ${[1,2,3,4,5,6,7].map(n => `
+          <label><input type="radio" name="${key}" value="${n}"><span>${n}</span></label>
+        `).join("")}
+      </div>
+      <div class="ends"><span>${lo}</span><span>${hi}</span></div>
+    </fieldset>
+  `).join("") + `
+    <fieldset>
+      <legend>Anything worth saying about this one?</legend>
+      <p class="hint">Especially if it was unusually good or unusually wrong.</p>
+      <textarea name="note" rows="2"></textarea>
+    </fieldset>
+    <button id="submit" type="submit" disabled>Submit and continue</button>`;
+
+  form.addEventListener("change", () => {
+    const answered = Object.keys(QUESTIONS).every(k => form.elements[k].value);
+    document.getElementById("submit").disabled = !answered;
+  });
+}
+
+async function load() {
+  const res = await fetch(`/trials/next?rater=${encodeURIComponent(rater)}`);
+  const data = await res.json();
+  document.getElementById("prog").style.width =
+    data.progress.total ? (100 * data.progress.done / data.progress.total) + "%" : "0%";
+  if (data.done) {
+    document.getElementById("trial").hidden = true;
+    document.getElementById("done").hidden = false;
+    return;
+  }
+  current = data.trial;
+  playing = null; paint();
+  document.getElementById("reveal").textContent = "";
+  renderForm();
+  document.getElementById("p-context").onclick = () => play("context", current.context_url);
+  document.getElementById("p-mix").onclick     = () => play("mix", current.mix_url);
+  document.getElementById("p-solo").onclick    = () => play("solo", current.candidate_url);
+}
+
+document.getElementById("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const scores = {};
+  for (const k of Object.keys(QUESTIONS)) scores[k] = Number(form.elements[k].value);
+  audio.pause(); playing = null;
+  const res = await fetch(`/trials/${current.trial_id}/rate`, {
+    method: "POST", headers: {"content-type": "application/json"},
+    body: JSON.stringify({ rater, scores, note: form.elements.note.value || null })
+  });
+  const was = await res.json();
+  document.getElementById("reveal").textContent =
+    `that was: ${was.strategy}${was.distance != null ? " @ distance " + was.distance : ""}`;
+  setTimeout(load, 900);
+});
+
+document.addEventListener("submit", e => e.preventDefault());
+load();
+</script>
+"""

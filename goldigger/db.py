@@ -58,6 +58,37 @@ CREATE TABLE IF NOT EXISTS essentia (
   extracted_at     TEXT
 );
 
+-- The listening test. Trials are generated ahead of time so the same set of
+-- candidates can be shown to several raters, and so `strategy` and `distance`
+-- live here rather than travelling to the browser: a rater who can see which
+-- arm produced a candidate is no longer blind, and the experiment is spoiled.
+CREATE TABLE IF NOT EXISTS trials (
+  trial_id     TEXT PRIMARY KEY,
+  batch        TEXT NOT NULL,
+  context_ids  TEXT NOT NULL,          -- JSON list of chunk ids
+  candidate    TEXT NOT NULL,
+  strategy     TEXT NOT NULL,          -- never serialised to a rater
+  distance     REAL,                   -- never serialised to a rater
+  session_bpm  REAL,
+  created_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_trials_batch ON trials(batch);
+
+-- One row per (trial, rater). Scores are 1-7; a rater may skip a scale, so the
+-- columns are nullable and the report counts what it actually has.
+CREATE TABLE IF NOT EXISTS ratings (
+  trial_id         TEXT NOT NULL,
+  rater            TEXT NOT NULL,
+  obviousness      INTEGER,
+  compatibility    INTEGER,
+  inspiration      INTEGER,
+  discovery        INTEGER,
+  direction_change INTEGER,
+  note             TEXT,
+  created_at       TEXT,
+  PRIMARY KEY (trial_id, rater)
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
   job_id     TEXT PRIMARY KEY,
   root       TEXT,
