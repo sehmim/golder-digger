@@ -14,3 +14,15 @@
   --color-success: #7d9669;
   --color-error: #a3402a;
 }
+
+/* Opt-in dark palette, applied via data-theme on the document root. */
+:root[data-theme='dark'] {
+  --color-background: #191713;
+  --color-surface: #232019;
+  --color-text: #ede7d7;
+  --color-muted: #968c76;
+  --color-accent: #e0b355;
+
+  --color-success: #93ac6c;
+  --color-error: #c4634a;
+}

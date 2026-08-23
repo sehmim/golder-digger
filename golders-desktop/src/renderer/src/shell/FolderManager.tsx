@@ -76,9 +76,14 @@ export default function FolderManager({
                     ) : null}
                     <button
                       type="button"
+                      className="golden-toggle"
+                      data-on={folder.enabled || undefined}
+                      role="switch"
+                      aria-checked={folder.enabled}
+                      aria-label={folder.enabled ? 'Disable folder' : 'Enable folder'}
                       onClick={() => actions.setFolderEnabled(folder.id, !folder.enabled)}
                     >
-                      {folder.enabled ? 'Disable' : 'Enable'}
+                      <span />
                     </button>
                     <button
                       type="button"

@@ -6,6 +6,7 @@ import { useIngest } from './useIngest'
 import type { IngestJob } from './useIngest'
 
 export type KnobStyle = 'classic' | 'dark' | 'minimal'
+export type ThemeMode = 'light' | 'dark'
 export type FolderAnalysisStatus = 'unknown' | 'analyzing' | 'available' | 'failed'
 
 /** User intent stored in settings.json. Runtime facts are deliberately excluded. */
@@ -27,6 +28,7 @@ export interface FolderRecord extends RegisteredFolder {
 interface PersistedSettings {
   version: 1
   knobStyle: KnobStyle
+  themeMode: ThemeMode
   /** Once enabled, an empty active list means "search nothing", not "search everything". */
   folderFilteringEnabled: boolean
   folders: RegisteredFolder[]
@@ -50,6 +52,7 @@ export interface ApplicationState {
   settings: {
     loaded: boolean
     knobStyle: KnobStyle
+    themeMode: ThemeMode
     folderFilteringEnabled: boolean
   }
 }
@@ -62,6 +65,8 @@ export interface ApplicationActions {
   clearJobs: () => void
   setProject: (project: SessionSet | null) => void
   setKnobStyle: (style: KnobStyle) => void
+  setThemeMode: (mode: ThemeMode) => void
+  setFolderFilteringEnabled: (enabled: boolean) => void
   setFolderEnabled: (folderId: string, enabled: boolean) => void
   retryFolder: (folderId: string) => Promise<void>
   removeFolder: (folderId: string) => void
@@ -75,6 +80,7 @@ interface ApplicationContextValue {
 const EMPTY_SETTINGS: PersistedSettings = {
   version: 1,
   knobStyle: 'classic',
+  themeMode: 'light',
   folderFilteringEnabled: false,
   folders: []
 }
@@ -83,6 +89,10 @@ const ApplicationContext = createContext<ApplicationContextValue | null>(null)
 
 function isKnobStyle(value: unknown): value is KnobStyle {
   return value === 'classic' || value === 'dark' || value === 'minimal'
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === 'light' || value === 'dark'
 }
 
 function isRegisteredFolder(value: unknown): value is RegisteredFolder {
@@ -103,6 +113,7 @@ function readSettings(raw: unknown): PersistedSettings {
 
   const candidate = raw as {
     knobStyle?: unknown
+    themeMode?: unknown
     folderFilteringEnabled?: unknown
     folders?: unknown
   }
@@ -120,6 +131,8 @@ function readSettings(raw: unknown): PersistedSettings {
   return {
     version: 1,
     knobStyle: isKnobStyle(candidate.knobStyle) ? candidate.knobStyle : 'classic',
+    // Settings written before dark mode existed did not have this field.
+    themeMode: isThemeMode(candidate.themeMode) ? candidate.themeMode : 'light',
     // Settings written by the first persistence draft did not have this flag.
     folderFilteringEnabled:
       typeof candidate.folderFilteringEnabled === 'boolean'
@@ -139,6 +152,7 @@ export function ApplicationStateProvider({ children }: { children: ReactNode }):
   const [api, setApi] = useState<ApiStatus>({ ready: false, error: null })
   const [project, setProject] = useState<SessionSet | null>(null)
   const [knobStyle, setKnobStyle] = useState<KnobStyle>('classic')
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light')
   const [folders, setFolders] = useState<FolderRecord[]>([])
   const [folderFilteringEnabled, setFolderFilteringEnabled] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
@@ -167,6 +181,7 @@ export function ApplicationStateProvider({ children }: { children: ReactNode }):
 
         if (cancelled) return
         setKnobStyle(persisted.knobStyle)
+        setThemeMode(persisted.themeMode)
         setFolderFilteringEnabled(persisted.folderFilteringEnabled)
         setFolders(hydratedFolders)
       } catch (cause) {
@@ -187,13 +202,19 @@ export function ApplicationStateProvider({ children }: { children: ReactNode }):
     const settings: PersistedSettings = {
       version: 1,
       knobStyle,
+      themeMode,
       folderFilteringEnabled,
       folders: folders.map(persistedFolder)
     }
     void window.desktop
       .saveSettings(settings)
       .catch((cause) => console.error('Could not save application settings', cause))
-  }, [folderFilteringEnabled, folders, knobStyle, settingsLoaded])
+  }, [folderFilteringEnabled, folders, knobStyle, themeMode, settingsLoaded])
+
+  // The renderer root is the one DOM node every themed surface inherits from.
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode
+  }, [themeMode])
 
   // Analysis availability belongs to the corpus, so verify it rather than trusting settings.
   useEffect(() => {
@@ -266,7 +287,7 @@ export function ApplicationStateProvider({ children }: { children: ReactNode }):
           error
         },
         project,
-        settings: { loaded: settingsLoaded, knobStyle, folderFilteringEnabled }
+        settings: { loaded: settingsLoaded, knobStyle, themeMode, folderFilteringEnabled }
       },
       actions: {
         chooseDirectories: async () => {
@@ -313,6 +334,8 @@ export function ApplicationStateProvider({ children }: { children: ReactNode }):
         clearJobs,
         setProject,
         setKnobStyle,
+        setThemeMode,
+        setFolderFilteringEnabled,
         setFolderEnabled: (folderId, enabled) =>
           setFolders((current) =>
             current.map((folder) =>
@@ -353,6 +376,7 @@ export function ApplicationStateProvider({ children }: { children: ReactNode }):
     folders,
     jobs,
     knobStyle,
+    themeMode,
     project,
     settingsLoaded,
     startEssentia,

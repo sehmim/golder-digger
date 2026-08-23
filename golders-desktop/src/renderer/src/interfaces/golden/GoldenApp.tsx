@@ -6,6 +6,8 @@ import FolderStrip from './FolderStrip'
 import GoldenKnob from './GoldenKnob'
 import GoldenResults from './GoldenResults'
 import type { GoldenResultsState } from './GoldenResults'
+import IngestStrip from './IngestStrip'
+import SettingsOverlay from './SettingsOverlay'
 
 const RESULT_COUNT = 30
 
@@ -27,6 +29,7 @@ export default function GoldenApp({
   const [results, setResults] = useState<GoldenResultsState>({ status: 'idle' })
   const [contextLoading, setContextLoading] = useState(false)
   const [contextError, setContextError] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const requestGeneration = useRef(0)
   const tempo = state.project?.session.tempo ?? null
   const center = tonalCenter(state.project?.session.key ?? null)
@@ -125,6 +128,15 @@ export default function GoldenApp({
       </button>
       <div className="golden-page__controls">
         <FolderStrip folders={state.folders} onOpenManager={onOpenFolderManager} />
+        <button
+          type="button"
+          className="golden-settings-trigger"
+          aria-label="Open settings"
+          title="Settings"
+          onClick={() => setSettingsOpen(true)}
+        >
+          ◎
+        </button>
         <InterfaceMenu current="golden" onNavigate={onNavigate} />
       </div>
       <GoldenKnob
@@ -134,7 +146,9 @@ export default function GoldenApp({
         style={state.settings.knobStyle}
         disabled={!hasUsableContext || contextLoading}
       />
+      <IngestStrip />
       {results.status !== 'idle' ? <GoldenResults state={results} onBack={returnToKnob} /> : null}
+      {settingsOpen ? <SettingsOverlay onClose={() => setSettingsOpen(false)} /> : null}
     </main>
   )
 }

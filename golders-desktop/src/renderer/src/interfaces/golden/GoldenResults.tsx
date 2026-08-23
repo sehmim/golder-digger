@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { baseName } from '../../application/api'
 import type { AnalyzeResult, Candidate } from '../../application/api'
+import { waveformHeights } from './waveform'
 
 export type GoldenResultsState =
   | { status: 'idle' }
@@ -26,11 +28,15 @@ function resultMeta(candidate: Candidate): string {
     candidate.role,
     candidate.bpm ? `${Math.round(candidate.bpm)} BPM` : null,
     candidate.tonic
-  ].filter(Boolean).join(' · ')
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 export default function GoldenResults({ state, onBack }: GoldenResultsProps): React.JSX.Element {
   const files = state.status === 'ready' ? uniqueFiles(state.result.results) : []
+  const [playing, setPlaying] = useState<string | null>(null)
+  const [looping, setLooping] = useState<string | null>(null)
 
   return (
     <section className="golden-results" aria-label="Ranked sounds">
@@ -50,23 +56,66 @@ export default function GoldenResults({ state, onBack }: GoldenResultsProps): Re
         ) : null}
 
         {state.status === 'error' ? (
-          <p className="golden-results__message" data-error>{state.message}</p>
+          <div className="golden-results__error">
+            <span className="golden-results__error-mark" aria-hidden="true">
+              !
+            </span>
+            <p className="golden-results__message" data-error>
+              search failed
+              <br />
+              <span>{state.message}</span>
+            </p>
+          </div>
         ) : null}
 
         {state.status === 'ready' && files.length === 0 ? (
-          <p className="golden-results__message">No matching sounds.</p>
+          <p className="golden-results__message">
+            No matching sounds
+            <br />
+            <span>nothing this far out still fits the set — try turning back</span>
+          </p>
         ) : null}
 
         {state.status === 'ready' && files.length > 0 ? (
           <ol className="golden-results__list">
-            {files.map((candidate) => (
-              <li key={candidate.chunk_id} title={candidate.path}>
-                <span className="golden-results__file">
-                  <strong>{baseName(candidate.path)}</strong>
-                  {resultMeta(candidate) ? <small>{resultMeta(candidate)}</small> : null}
-                </span>
-              </li>
-            ))}
+            {files.map((candidate) => {
+              const isPlaying = playing === candidate.chunk_id
+              const isLooping = looping === candidate.chunk_id
+              return (
+                <li key={candidate.chunk_id} title={candidate.path} data-playing={isPlaying || undefined}>
+                  <span className="golden-results__bar" />
+                  <span className="golden-results__file">
+                    <strong>{baseName(candidate.path)}</strong>
+                    {resultMeta(candidate) ? <small>{resultMeta(candidate)}</small> : null}
+                  </span>
+                  <span className="golden-results__wave" aria-hidden="true">
+                    {waveformHeights(candidate.chunk_id).map((height, index) => (
+                      <span key={index} style={{ height: `${height}px` }} />
+                    ))}
+                  </span>
+                  <span className="golden-results__transport">
+                    <button
+                      type="button"
+                      aria-label="Play"
+                      onClick={() => setPlaying(isPlaying ? null : candidate.chunk_id)}
+                    >
+                      ▶
+                    </button>
+                    <button type="button" aria-label="Stop" onClick={() => setPlaying(null)}>
+                      ■
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Loop"
+                      data-active={isLooping || undefined}
+                      onClick={() => setLooping(isLooping ? null : candidate.chunk_id)}
+                    >
+                      ↻
+                    </button>
+                  </span>
+                </li>
+              )
+            })}
           </ol>
         ) : null}
       </div>
