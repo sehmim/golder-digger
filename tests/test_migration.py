@@ -17,7 +17,8 @@ CREATE TABLE chunks (
 );
 """
 
-NEW_COLUMNS = {"tempo_confidence", "tonalness", "spectral", "tags"}
+NEW_COLUMNS = {"tempo_confidence", "tonalness", "spectral", "tags",
+               "note_presence", "notes"}
 
 
 def _columns(conn, table):

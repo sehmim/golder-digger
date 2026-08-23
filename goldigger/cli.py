@@ -4,7 +4,7 @@ import csv
 import json
 import sys
 
-from . import ableton, config, db, essentia_runner, ingest, scoring
+from . import ableton, config, db, essentia_runner, features, ingest, scoring
 
 
 CSV_FIELDS = ["rank", "chunk_id", "path", "role", "bpm", "tonic", "is_major",
@@ -66,6 +66,12 @@ def main():
         help="second-opinion analysis: native on macOS/Linux, Docker on Windows")
     p.add_argument("root", help="the same folder you ingested")
     p.add_argument("--out", help="where the raw extractor JSON lands")
+
+    p = sub.add_parser("notes", help="which pitch classes sound in a chunk")
+    p.add_argument("target", help="chunk id, or a path substring")
+    p.add_argument("--floor", type=float, default=config.NOTE_PRESENCE_FLOOR,
+                   help="presence share required to count as present")
+    p.add_argument("--format", choices=["text", "json"], default="text")
 
     sub.add_parser("serve", help="run the API")
     args = ap.parse_args()
@@ -133,6 +139,47 @@ def main():
         for r in agree:
             label = {1: "agree", 0: "disagree", None: "no key either side"}[r["a"]]
             print(f"  librosa vs essentia key: {label:20s} {r['c']}", file=sys.stderr)
+
+    elif args.cmd == "notes":
+        rows = conn.execute(
+            "SELECT chunk_id, path, chunk_index, tonalness, note_presence, notes"
+            " FROM chunks WHERE chunk_id=? OR path LIKE ? ORDER BY path, chunk_index",
+            (args.target, f"%{args.target}%")).fetchall()
+        if not rows:
+            raise SystemExit(f"no chunk matches {args.target!r}")
+
+        out = []
+        for r in rows:
+            presence = db.from_blob(r["note_presence"], 12)
+            present = features.notes_from_presence(presence, args.floor)
+            out.append({
+                "chunk_id": r["chunk_id"], "path": r["path"],
+                "chunk_index": r["chunk_index"],
+                "tonalness": r["tonalness"],
+                "notes": present,
+                "presence": {config.PITCH_NAMES[i]: round(float(presence[i]), 3)
+                             for i in range(12)},
+            })
+
+        if args.format == "json":
+            print(json.dumps(out, indent=2))
+        else:
+            for o in out:
+                print(f"{o['path']}  [chunk {o['chunk_index']}]  {o['chunk_id']}")
+                tonal = o["tonalness"]
+                if tonal is not None and tonal < 0.15:
+                    # the note set of percussive material is noise, not harmony
+                    print(f"  tonalness {tonal:.3f} -- percussive, notes below are unreliable")
+                elif tonal is not None:
+                    print(f"  tonalness {tonal:.3f}")
+                for name, v in sorted(o["presence"].items(), key=lambda kv: -kv[1]):
+                    if v <= 0:
+                        continue
+                    mark = "  <- present" if name in o["notes"] else ""
+                    print(f"    {name:<3s} {v:.3f} {'#' * int(round(v * 30))}{mark}")
+                print(f"  notes: {', '.join(o['notes']) or '(none)'}"
+                      f"   [{len(o['notes'])} of 12]")
+                print()
 
     elif args.cmd == "serve":
         import uvicorn

@@ -89,6 +89,71 @@ The mean-removal in tempo confidence matters more than it looks. On a raw onset
 envelope the DC offset dominates `ac[lag]/ac[0]`, and steady noise scores 0.886
 against a metronome's 0.773 — backwards. Mean-removed: 0.752 against -0.069.
 
+## Note content
+
+A key label is lossy. C minor and D# major name an *identical* set of notes, so
+two loops that would layer perfectly look unrelated by key alone. The notes
+themselves are what compatibility actually turns on, so they are measured and
+stored directly.
+
+```bash
+golddigger notes EP1_Chord3          # chunk id, or any path substring
+golddigger notes <chunk_id> --floor 0.05 --format json
+```
+
+```
+soundbank\EP1_Chord3_F#Maj7.wav  [chunk 0]  9014f855d81e:0
+  tonalness 0.992
+    F#  1.000 ##############################  <- present
+    A#  0.996 ##############################  <- present
+    D#  0.981 #############################  <- present
+    G#  0.888 ###########################  <- present
+    C#  0.178 #####  <- present
+  notes: C#, D#, F#, G#, A#   [5 of 12]
+```
+
+Octave is discarded on purpose -- pitch class is what shared-note compatibility
+turns on.
+
+**Measured per frame, then aggregated -- never median-collapsed.** A median over
+the chunk answers "what is the average harmony here", which deletes any chord
+holding a minority of the loop: on a Cm-Cm-Cm-Fm progression it reports only
+`C D# G` and the Fm vanishes entirely. Counting frames instead recovers all five
+notes, `C D# F G G#`.
+
+So `note_presence` is a **weight, not a flag** -- the share of sounding frames
+each pitch class is active in. A note held for three bars scores near 1.0 while
+one passed through for half a bar scores ~0.25, which is the difference between
+two loops sharing a tonal centre and merely brushing past the same pitch.
+
+Three constants govern it, all in `config.py`:
+
+| | |
+|---|---|
+| `NOTE_FRAME_THRESHOLD` 0.40 | of that frame's own peak: this note is sounding *now* |
+| `NOTE_PRESENCE_FLOOR` 0.15 | share of frames before a note counts as present |
+| `NOTE_SILENCE_REL` 0.05 | frames quieter than this share of the loudest do not vote |
+
+The continuous vector is stored, not just the derived set, so `--floor` re-reads
+the corpus at a different threshold with no re-analysis.
+
+Two things that are easy to get wrong here:
+
+- `chroma_cqt` is called with **`norm=None`**. It normalizes every frame to peak
+  1.0 by default, *silence included*, which leaves the silence gate comparing
+  1.0 against 1.0 and lets silent frames vote. Raw magnitudes keep the
+  distinction -- measured 93.1 for sounding frames against 2.7 for silence.
+- Notes are read off the **HPSS harmonic signal**, not the full mix. Percussive
+  energy smears across all twelve bins.
+
+**Percussive material still reports nonsense, on purpose.** A drum loop comes
+back as all twelve notes because it genuinely has energy in every bin. The note
+set is emitted anyway and paired with `tonalness` -- consistent with the rest of
+the confidence work, which reports honestly rather than suppressing. The CLI
+prints a warning below 0.15 tonalness. Anything consuming these for matching
+should filter on `tonalness` first, or a drum loop will appear compatible with
+every tonal file in the corpus.
+
 ## Essentia — a second opinion, and a Windows caveat
 
 `golddigger essentia <root>` re-analyses the same folder with Essentia's
@@ -131,7 +196,7 @@ goldigger/
   essentia_runner.py   OS-aware branch (native vs Docker) + merge into the corpus
   essentia_extract.py  runs inside the container; stdlib + essentia only
   api.py        FastAPI
-  cli.py        ingest | stats | analyze | als | essentia | serve
+  cli.py        ingest | stats | analyze | als | essentia | notes | serve
 ```
 
 Corpus lives in SQLite; on boot every embedding is loaded into one `(N, 512)`

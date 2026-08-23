@@ -195,6 +195,55 @@ def chroma_vector(y, sr) -> np.ndarray:
     return (v / s if s > 0 else np.full(12, 1 / 12)).astype(np.float32)
 
 
+def note_presence(y, sr=None) -> np.ndarray:
+    """12 floats: the share of sounding frames each pitch class is active in.
+
+    Per frame, not median-collapsed. The median that chroma_vector uses answers
+    "what is the average harmony here", which silently deletes any chord holding
+    a minority of the chunk -- a Cm|Cm|Cm|Fm loop reports only Cm. Thresholding
+    each frame against its own peak and then counting frames keeps the Fm.
+
+    The result is a weight, not a flag: a note held for three bars scores higher
+    than one passed through for half of one, which is the difference between two
+    loops sharing a tonal centre and merely brushing past the same pitch.
+
+    Feed this the HPSS harmonic signal. Percussive energy smears across all
+    twelve bins and will otherwise report a drum loop as every note at once.
+    """
+    if len(y) < config.HOP_LENGTH * 2 or not np.any(y):
+        return np.zeros(12, dtype=np.float32)
+
+    # norm=None is load-bearing: chroma_cqt normalizes every frame to peak 1.0 by
+    # default, silence included, which would leave the gate below comparing 1.0
+    # against 1.0 and letting silent frames vote. Raw magnitudes keep the
+    # distinction -- measured 93.1 for sounding frames against 2.7 for silence.
+    c = librosa.feature.chroma_cqt(y=y, sr=sr or config.SR, bins_per_octave=36,
+                                   norm=None)
+    peak = c.max(axis=0)
+    if peak.max() <= 0:
+        return np.zeros(12, dtype=np.float32)
+
+    # silence has no notes to report; letting quiet frames vote would dilute
+    # every presence fraction by however much padding the file happens to carry
+    sounding = peak >= peak.max() * config.NOTE_SILENCE_REL
+    if not sounding.any():
+        return np.zeros(12, dtype=np.float32)
+
+    normalized = c[:, sounding] / peak[sounding]
+    active = normalized >= config.NOTE_FRAME_THRESHOLD
+    return active.mean(axis=1).astype(np.float32)
+
+
+def notes_from_presence(presence, floor: float | None = None) -> list[str]:
+    """Pitch-class names above the presence floor, in pitch order.
+
+    Kept separate from note_presence so the threshold can be revisited without
+    re-analysing audio -- the stored vector is continuous on purpose.
+    """
+    floor = config.NOTE_PRESENCE_FLOOR if floor is None else floor
+    return [config.PITCH_NAMES[i] for i in range(12) if presence[i] >= floor]
+
+
 def tonalness(chroma: np.ndarray) -> float:
     """0 for a flat chroma, ->1 for a peaked one. Normalized negative entropy.
 

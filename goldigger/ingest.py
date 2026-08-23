@@ -78,6 +78,7 @@ def analyze_file(path: Path) -> list[dict]:
             pc, maj, conf = features.estimate_key(ch, gate=tonal)
             tags = features.tags_from_sims(mock.tag_sims(cid))
             r, src = _role_or_tags(role, role_source, tags)
+            presence = mock.note_presence(cid)
             rows.append(dict(
                 chunk_id=cid, path=str(path), file_hash=fh, chunk_index=i,
                 t_start=t0, t_end=t1, bpm=rhythm["bpm"],
@@ -85,6 +86,8 @@ def analyze_file(path: Path) -> list[dict]:
                 tonic_pc=pc, is_major=maj, key_confidence=conf,
                 role=r, role_source=src, tonalness=tonal, tempo_confidence=tconf,
                 spectral=mock.spectral(cid), tags=tags,
+                note_presence=presence,
+                notes=features.notes_from_presence(presence),
                 chroma=ch, clap=mock.clap(cid)))
         return rows
 
@@ -108,6 +111,9 @@ def analyze_file(path: Path) -> list[dict]:
         # 0.70->0.92 and corrected one outright wrong key
         ch = features.chroma_vector(seg_h, sr)
         pc, maj, conf = features.estimate_key(ch, gate=tonal)
+        # harmonic signal, same as the chroma: percussive energy smears across
+        # every bin and would report a drum loop as all twelve notes
+        presence = features.note_presence(seg_h, sr)
         rows.append(dict(
             chunk_id=f"{fh[:12]}:{i}", path=str(path), file_hash=fh, chunk_index=i,
             t_start=t0, t_end=t1, bpm=rhythm["bpm"],
@@ -116,6 +122,8 @@ def analyze_file(path: Path) -> list[dict]:
             role=role, role_source=role_source, tonalness=tonal,
             tempo_confidence=features.tempo_confidence(seg, sr, rhythm["bpm"]),
             spectral=features.spectral_stats(seg, sr), tags=None,
+            note_presence=presence,
+            notes=features.notes_from_presence(presence),
             chroma=ch, clap=None))
         clips.append(librosa.resample(seg, orig_sr=sr, target_sr=config.CLAP_SR))
 
@@ -133,23 +141,28 @@ def upsert(conn, rows):
         """INSERT INTO chunks (chunk_id, path, file_hash, chunk_index, t_start, t_end,
                                bpm, beats_per_bar, tonic_pc, is_major, key_confidence,
                                role, role_source, chroma, clap,
-                               tempo_confidence, tonalness, spectral, tags)
+                               tempo_confidence, tonalness, spectral, tags,
+                               note_presence, notes)
            VALUES (:chunk_id,:path,:file_hash,:chunk_index,:t_start,:t_end,:bpm,
                    :beats_per_bar,:tonic_pc,:is_major,:key_confidence,:role,
                    :role_source,:chroma,:clap,
-                   :tempo_confidence,:tonalness,:spectral,:tags)
+                   :tempo_confidence,:tonalness,:spectral,:tags,
+                   :note_presence,:notes)
            ON CONFLICT(chunk_id) DO UPDATE SET
              bpm=excluded.bpm, tonic_pc=excluded.tonic_pc, is_major=excluded.is_major,
              key_confidence=excluded.key_confidence, role=excluded.role,
              role_source=excluded.role_source, chroma=excluded.chroma,
              clap=excluded.clap, tempo_confidence=excluded.tempo_confidence,
              tonalness=excluded.tonalness, spectral=excluded.spectral,
-             tags=excluded.tags""",
+             tags=excluded.tags, note_presence=excluded.note_presence,
+             notes=excluded.notes""",
         [{**r,
           "chroma": db.to_blob(r["chroma"]),
           "clap": db.to_blob(r["clap"]),
           "spectral": json.dumps(r["spectral"]) if r["spectral"] else None,
-          "tags": json.dumps(r["tags"]) if r["tags"] else None}
+          "tags": json.dumps(r["tags"]) if r["tags"] else None,
+          "note_presence": db.to_blob(r["note_presence"]),
+          "notes": json.dumps(r["notes"])}
          for r in rows])
     conn.commit()
 

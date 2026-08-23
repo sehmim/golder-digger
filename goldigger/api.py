@@ -98,7 +98,7 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
             role: str | None = None):
     sql = ("SELECT chunk_id, path, chunk_index, t_start, t_end, bpm, beats_per_bar,"
            " tonic_pc, is_major, key_confidence, role, role_source,"
-           " tempo_confidence, tonalness, spectral, tags FROM chunks")
+           " tempo_confidence, tonalness, spectral, tags, notes FROM chunks")
     args: list = []
     if role:
         sql += " WHERE role=?"
@@ -110,7 +110,7 @@ def library(limit: int = Query(100, le=1000), offset: int = 0,
         r["tonic"] = (config.PITCH_NAMES[r["tonic_pc"]]
                       if r["tonic_pc"] is not None and r["tonic_pc"] >= 0 else None)
         # stored as JSON text; hand the client objects, not strings
-        for k in ("spectral", "tags"):
+        for k in ("spectral", "tags", "notes"):
             r[k] = json.loads(r[k]) if r[k] else None
     total = state["conn"].execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
     return {"total": total, "count": len(rows), "chunks": rows}

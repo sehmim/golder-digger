@@ -66,3 +66,15 @@ def spectral(key: str) -> dict:
     return {k: {"mean": float(r.uniform(*lohi)),
                 "confidence": float(r.uniform(0.25, 0.98))}
             for k, lohi in ranges.items()}
+
+
+def note_presence(key: str) -> np.ndarray:
+    """A sparse, realistically-shaped presence vector: a few notes held for most
+    of the chunk, a few passing through, the rest absent."""
+    r = _rng(key + ":notes")
+    v = np.zeros(12, dtype=np.float32)
+    tonic = int(r.integers(0, 12))
+    scale = [0, 2, 4, 5, 7, 9, 11] if r.random() < 0.6 else [0, 2, 3, 5, 7, 8, 10]
+    for deg in r.choice(scale, size=int(r.integers(3, 6)), replace=False):
+        v[(tonic + int(deg)) % 12] = float(r.uniform(0.2, 1.0))
+    return v

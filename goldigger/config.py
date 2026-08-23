@@ -26,6 +26,15 @@ KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.
 KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
 PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
+# --- note content ---
+# A key label is lossy: C minor and D# major name an identical set of notes, so
+# two loops that would layer perfectly look unrelated by key alone. Note content
+# is measured per frame and then aggregated, NOT median-collapsed over the chunk
+# -- a median averages away any chord that occupies a minority of the loop.
+NOTE_FRAME_THRESHOLD = 0.40   # of that frame's own peak: "this note is sounding now"
+NOTE_PRESENCE_FLOOR = 0.15    # share of frames before a note counts as present
+NOTE_SILENCE_REL = 0.05       # frames quieter than this share of the loudest do not vote
+
 # --- fit ---
 FIT_FLOOR = 0.45
 FIT_FLOOR_MIN = 0.20

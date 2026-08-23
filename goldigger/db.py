@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS chunks (
   tempo_confidence REAL,
   tonalness       REAL,
   spectral        TEXT,
-  tags            TEXT
+  tags            TEXT,
+  note_presence   BLOB,
+  notes           TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(file_hash);
 CREATE INDEX IF NOT EXISTS idx_chunks_role ON chunks(role);
@@ -88,6 +90,8 @@ MIGRATIONS = {
         "tonalness": "REAL",
         "spectral": "TEXT",
         "tags": "TEXT",
+        "note_presence": "BLOB",
+        "notes": "TEXT",
     },
 }
 
