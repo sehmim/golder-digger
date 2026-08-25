@@ -143,6 +143,14 @@ They are rare on a large library, and that is the honest outcome. Four independe
 rankings over 14k chunks picking six each collide seldom; when they do, it means
 something.
 
+The rule is *chunk*, not file, and near-misses are common: on this repo's own
+library, bar 0 of a drum take turned up far along harmony while bar 1 of the same
+take turned up far along timbre. Counting that as an interchange would claim
+something false — neither chunk is far in two respects, and the map's stops are
+musical moments, not filenames. Note that the ranked list does dedupe by file
+(`uniqueFiles`), so the same file can legitimately appear twice on the map and
+once in the list.
+
 ## Relationship to `select`
 
 Nothing here replaces `scoring.select`. The two answer different questions:
