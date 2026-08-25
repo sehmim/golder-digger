@@ -18,11 +18,17 @@
      the engine: each line is one dimension you can ride away from your session
      along. This is the only place the colour tokens the API returns
      (green/orange/blue/yellow) become pixels — nothing else may use them, or
-     the map stops meaning anything. */
+     the map stops meaning anything.
+
+     Montreal's own yellow and orange are lighter than these. A rail is the only
+     thing saying which line a stop belongs to, so it has to clear 3:1 against
+     --color-background; at the true metro yellow that ratio is 1.8 and the line
+     is effectively invisible. These are the darkest values that still read as
+     yellow and orange, at 3.3:1 each. */
   --line-green: #128a4e;
-  --line-orange: #dd6f11;
+  --line-orange: #cf6410;
   --line-blue: #1f6cc0;
-  --line-yellow: #d4ae06;
+  --line-yellow: #9c8003;
 
   /* The same four lines, darkened enough to be read as small text on
      --color-background. A metro yellow is a fine colour for a painted rail and

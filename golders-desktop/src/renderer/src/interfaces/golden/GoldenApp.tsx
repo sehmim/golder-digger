@@ -35,6 +35,7 @@ export default function GoldenApp({
   // a project referencing audio that cannot be read would loop forever.
   const autoIngested = useRef(new Set<string>())
   const requestGeneration = useRef(0)
+  const networkGeneration = useRef(0)
 
   const project = state.project
   const tempo = project?.session.tempo ?? null
@@ -161,18 +162,32 @@ export default function GoldenApp({
       })
   }
 
+  // Depended on by value, not by identity. `activeFolderRoots` is rebuilt by the
+  // provider's memo whenever *any* of its inputs changes, and one of those is the
+  // ingest job list, which allocates a fresh array on every progress tick. Keyed
+  // on the array itself this effect fired 2.5 times a second during an ingest and
+  // wiped the drawn map each time, leaving the Map tab spinning on a request
+  // nothing would ever re-issue.
+  const rootsKey = state.activeFolderRoots?.join('\u0000') ?? null
+
   // A drawn network is only true of the context it was drawn for. Nothing else
   // invalidates it -- the dial does not enter into it -- so this is the one
   // place it has to be thrown away.
   useEffect(() => {
+    networkGeneration.current += 1
     setNetwork({ status: 'idle' })
-  }, [project?.session.path, state.activeFolderRoots])
+  }, [project?.session.path, rootsKey])
 
   // The map is a second question about the same context, not a re-sort of the
   // answer already on screen, so it costs its own round trip -- taken only when
   // someone actually asks for it.
   function drawLines(): void {
     if (!project || project.context_ids.length === 0) return
+    // Same guard `rank` uses, for the same reason: four routes over a large
+    // corpus take long enough that the context can change underneath the
+    // request, and a late answer would draw the previous project's library under
+    // this project's name.
+    const generation = ++networkGeneration.current
     setNetwork({ status: 'loading' })
     void window.desktop
       .sessionLines(
@@ -181,17 +196,24 @@ export default function GoldenApp({
         project.session.path,
         state.activeFolderRoots
       )
-      .then((result) => setNetwork({ status: 'ready', network: result }))
-      .catch((cause) =>
-        setNetwork({
-          status: 'error',
-          message: cause instanceof Error ? cause.message : String(cause)
-        })
-      )
+      .then((result) => {
+        if (networkGeneration.current === generation) {
+          setNetwork({ status: 'ready', network: result })
+        }
+      })
+      .catch((cause) => {
+        if (networkGeneration.current === generation) {
+          setNetwork({
+            status: 'error',
+            message: cause instanceof Error ? cause.message : String(cause)
+          })
+        }
+      })
   }
 
   function returnToKnob(): void {
     requestGeneration.current += 1
+    networkGeneration.current += 1
     setResults({ status: 'idle' })
     setNetwork({ status: 'idle' })
   }

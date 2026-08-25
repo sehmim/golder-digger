@@ -38,14 +38,17 @@ export default function TransitMap({
   playing
 }: TransitMapProps): React.JSX.Element {
   const [selected, setSelected] = useState<Stop | null>(null)
-  const drawn = network.lines.filter((line) => line.available)
 
   const interchanges = useMemo(
     () => new Set(network.interchanges.map((i) => i.chunk_id)),
     [network.interchanges]
   )
 
-  if (!drawn.length) {
+  // Every line is drawn, including the ones this library cannot answer. A line
+  // that silently vanishes takes its own absence with it: three rails on screen
+  // look complete, and nothing tells you a fourth question exists and went
+  // unasked. Greyed out, "we cannot measure this yet" is information.
+  if (!network.lines.some((line) => line.available)) {
     return (
       <p className="transit-map__empty">
         No line has anything to show yet — ingest more of your library, or open the
@@ -64,7 +67,7 @@ export default function TransitMap({
       </header>
 
       <ol className="transit-map__lines">
-        {drawn.map((line) => (
+        {network.lines.map((line) => (
           <LineRow
             key={line.key}
             line={line}
@@ -124,7 +127,11 @@ function LineRow({
   const terminus = line.stops.length ? line.stops[line.stops.length - 1] : null
 
   return (
-    <li className="transit-line" data-colour={line.colour}>
+    <li
+      className="transit-line"
+      data-colour={line.colour}
+      data-available={line.available || undefined}
+    >
       <span className="transit-line__name">{line.key}</span>
 
       <div className="transit-line__track">
@@ -135,11 +142,7 @@ function LineRow({
           aria-hidden="true"
           style={terminus ? { right: `${100 - across(terminus.position)}%` } : undefined}
         />
-        <span
-          className="transit-stop transit-stop--origin"
-          title="your session"
-          aria-hidden="true"
-        />
+        <span className="transit-stop transit-stop--origin" aria-hidden="true" />
         {line.stops.map((stop) => {
           const isPlaying = playing === stop.chunk_id
           return (
@@ -163,7 +166,9 @@ function LineRow({
       </div>
 
       <p className="transit-line__meta">
-        <span className="transit-line__blurb">{line.blurb}</span>
+        <span className="transit-line__blurb">
+          {line.available ? line.blurb : 'nothing in your library measures this yet'}
+        </span>
         {line.fit_floor_relaxed ? (
           // A line that had to open its gate to fill up is a weaker claim than
           // one that did not, and from the drawing alone they are identical.

@@ -2148,6 +2148,22 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+.golden-results__retry {
+  margin-left: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.golden-results__retry:hover {
+  background: var(--color-hover);
+}
+
 /* Centred, not tucked into the free corner: the overlay is translucent, and both
    corners already have controls of the page underneath showing through. */
 .golden-results__views {
@@ -3110,6 +3126,24 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+/* A line the library cannot answer. Drawn, because its absence is the thing
+   worth knowing, and dashed because a solid grey rail reads as a route with no
+   stops rather than a question that could not be asked. */
+.transit-line:not([data-available]) {
+  --line: var(--color-border);
+  --ink: var(--color-muted);
+}
+
+.transit-line:not([data-available]) .transit-line__rail {
+  height: 0;
+  border-top: 3px dashed var(--color-border);
+  background: none;
+}
+
+.transit-line:not([data-available]) .transit-line__name {
+  font-weight: 400;
+}
+
 .transit-line__track {
   position: relative;
   grid-area: 1 / 2;
@@ -3185,7 +3219,7 @@ button:focus-visible {
   transition: width 120ms ease, height 120ms ease, box-shadow 120ms ease;
 }
 
-.transit-stop:hover,
+.transit-stop:not(.transit-stop--origin):hover,
 .transit-stop[data-active] {
   width: 18px;
   height: 18px;

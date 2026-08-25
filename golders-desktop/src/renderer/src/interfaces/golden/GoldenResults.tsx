@@ -88,13 +88,17 @@ export default function GoldenResults({
 
       {/* Two answers to one context. The dial asks "how far", the map asks
           "far in what respect" -- they are different questions, so the map is
-          a view rather than another sort order. */}
+          a view rather than another sort order.
+
+          Plain buttons with aria-pressed, deliberately not role="tab": the tab
+          role promises a tabpanel, arrow-key navigation and a roving tabindex,
+          and announcing "tab, 1 of 2" while delivering none of that is worse
+          than not claiming it. */}
       {state.status === 'ready' ? (
-        <div className="golden-results__views" role="tablist" aria-label="Result view">
+        <div className="golden-results__views" role="group" aria-label="Result view">
           <button
             type="button"
-            role="tab"
-            aria-selected={view === 'list'}
+            aria-pressed={view === 'list'}
             data-active={view === 'list' || undefined}
             onClick={() => setView('list')}
           >
@@ -102,12 +106,14 @@ export default function GoldenResults({
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={view === 'map'}
+            aria-pressed={view === 'map'}
             data-active={view === 'map' || undefined}
             onClick={() => {
               setView('map')
-              if (network.status === 'idle') onShowMap()
+              // 'error' too: without it a single failed request is permanent for
+              // the life of the overlay, and the button already looks selected so
+              // nothing invites the user to press it again.
+              if (network.status === 'idle' || network.status === 'error') onShowMap()
             }}
           >
             Map
@@ -117,7 +123,12 @@ export default function GoldenResults({
 
       <div className="golden-results__body" aria-live="polite">
         {state.status === 'ready' && view === 'map' ? (
-          <MapView network={network} preview={preview} />
+          // aria-live is off inside the map: dropped into a polite region, two
+          // dozen stop labels are read out in one burst that cannot be
+          // interrupted.
+          <div className="golden-results__map" aria-live="off">
+            <MapView network={network} preview={preview} onRetry={onShowMap} />
+          </div>
         ) : null}
 
         {state.status === 'loading' ? (
@@ -191,16 +202,25 @@ export default function GoldenResults({
 
 function MapView({
   network,
-  preview
+  preview,
+  onRetry
 }: {
   network: GoldenNetworkState
   preview: Preview
+  onRetry: () => void
 }): React.JSX.Element {
   if (network.status === 'loading' || network.status === 'idle') {
     return <span className="spinner spinner--large" aria-label="Drawing the lines" />
   }
   if (network.status === 'error') {
-    return <p className="golden-results__message" data-error>{network.message}</p>
+    return (
+      <p className="golden-results__message" data-error>
+        {network.message}
+        <button type="button" className="golden-results__retry" onClick={onRetry}>
+          Try again
+        </button>
+      </p>
+    )
   }
   return (
     <TransitMap

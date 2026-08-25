@@ -285,10 +285,14 @@ session along. The API returns the token name (`"green"`), never a hex value, an
 `.transit-line[data-colour=…]` is the only place it becomes a pixel — a second
 mapping anywhere else and the map stops meaning anything.
 
-Each has a `--line-*-ink` sibling, darkened enough to pass as small text on
-`--color-background`. A metro yellow is a fine colour for a painted rail and an
-unreadable one for a caption, so rather than compromise the rails, the ink is its
-own token. Rails and stops use `--line`; anything with letters in it uses `--ink`.
+Each has a `--line-*-ink` sibling, darkened further for small text on
+`--color-background`. Rails and stops use `--line`; anything with letters in it
+uses `--ink`. Both are darker than Montreal's actual colours, and for two
+different thresholds: the rail is the only thing saying which line a stop belongs
+to, so it is a graphical object needing 3:1 (true metro yellow measures 1.8 and is
+effectively invisible here), while the caption is small text needing 4.5:1. Two
+tokens rather than one because meeting the text threshold on the rails would have
+flattened the palette.
 
 `TransitMap.tsx` renders it. See [lines.md](lines.md) for what the lines mean.
 
