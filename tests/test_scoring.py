@@ -32,6 +32,23 @@ def test_cof_proximity():
     assert scoring.cof_proximity(-1, 0) == config.NEUTRAL  # unknown key
 
 
+def test_unconfident_tempo_softens_toward_neutral():
+    """The rhythm term now gets the soft-evidence treatment harmony always had:
+    a beat tracker returns *a* number for steady noise, and the stored
+    confidence is what separates that from a metronome."""
+    corpus = scoring.Corpus([{"chunk_id": "confident"}, {"chunk_id": "unsure"}])
+    corpus.bpm[:] = 101.0                       # both wrong against 140
+    corpus.tconf = np.array([1.0, 0.0], dtype=np.float32)
+    ctx = {"chroma": np.full(12, 1 / 12, dtype=np.float32), "tonic": -1,
+           "kconf": 0.0, "bpm": 140.0, "tconf": 1.0, "roles": set()}
+
+    R = scoring.fit_all(corpus, ctx)["R"]
+
+    assert R[0] < 0.2, "a confident wrong tempo must still be punished"
+    assert R[1] == pytest.approx(config.NEUTRAL), \
+        "an unconfident tempo is absence of evidence, not a rejection"
+
+
 def test_role_compat_floors_above_zero():
     # a literal 0 would annihilate the geometric mean
     assert scoring.role_compat("drums", {"drums"}) == config.ROLE_SAME > 0

@@ -646,6 +646,7 @@ def load_corpus(conn):
         c.bpm[i] = r["bpm"] if r["bpm"] is not None else np.nan
         c.tonic[i] = r["tonic_pc"] if r["tonic_pc"] is not None else -1
         c.kconf[i] = r["key_confidence"] or 0.0
+        c.tconf[i] = r["tempo_confidence"] or 0.0
         c.roles[i] = r["role"]
         c.hashes[i] = r["file_hash"]
         c.synthetic[i] = r["synthetic"] != 0 if r["synthetic"] is not None else True

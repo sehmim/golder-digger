@@ -334,6 +334,9 @@ def apply_session_context(ctx: dict, als: dict, key_confidence: float = 1.0) -> 
     applied = []
     if als.get("tempo"):
         ctx["bpm"] = float(als["tempo"])
+        # stated, not inferred: the rhythm term's soft-evidence blend must not
+        # discount a tempo Live wrote in the set header
+        ctx["tconf"] = 1.0
         applied.append("bpm")
     if als.get("in_key") and als.get("scale_root") is not None:
         ctx["tonic"] = int(als["scale_root"])

@@ -4,7 +4,7 @@ import csv
 import json
 import sys
 
-from . import ableton, config, db, essentia_runner, ingest, scoring
+from . import ableton, config, db, essentia_runner, ingest, midi, scoring
 
 
 CSV_FIELDS = ["rank", "chunk_id", "path", "role", "bpm", "tonic", "is_major",
@@ -60,6 +60,22 @@ def main():
     p.add_argument("--format", choices=["json", "csv"], default="json")
     p.add_argument("--no-session-context", action="store_true",
                    help="ignore Live's tempo and key; infer them from the corpus")
+
+    p = sub.add_parser("midi", help="what a MIDI file states; --analyze ranks against it")
+    p.add_argument("file")
+    p.add_argument("--analyze", action="store_true",
+                   help="rank the corpus against the file alone (novelty borrows"
+                        " a corpus anchor -- the file has no audio)")
+    p.add_argument("--distance", type=float, default=50)
+    p.add_argument("-k", type=int, default=config.DEFAULT_K)
+    p.add_argument("--format", choices=["json", "csv"], default="json")
+
+    p = sub.add_parser("match", help="rank the corpus against audio files --"
+                                     " no DAW, no ingest")
+    p.add_argument("files", nargs="+")
+    p.add_argument("--distance", type=float, default=50)
+    p.add_argument("-k", type=int, default=config.DEFAULT_K)
+    p.add_argument("--format", choices=["json", "csv"], default="json")
 
     p = sub.add_parser(
         "essentia",
@@ -118,6 +134,34 @@ def main():
                 write_csv(results, floor, args.distance)
             else:
                 print(json.dumps({"fit_floor": floor, "results": results}, indent=2))
+
+    elif args.cmd == "midi":
+        mid = midi.load_midi(args.file)
+        print(midi.describe(mid), file=sys.stderr)
+        if not args.analyze:
+            print(json.dumps({**mid, "chroma": (mid["chroma"].tolist()
+                                                if mid["chroma"] is not None else None)},
+                             indent=2))
+        else:
+            corpus = ingest.load_corpus(conn)
+            ctx = midi.context_from_midi(corpus, mid)
+            results, floor = scoring.select(corpus, ctx, args.distance, args.k)
+            if args.format == "csv":
+                write_csv(results, floor, args.distance)
+            else:
+                print(json.dumps({"fit_floor": floor, "novelty_anchor": "corpus",
+                                  "results": results}, indent=2))
+
+    elif args.cmd == "match":
+        from pathlib import Path
+        corpus = ingest.load_corpus(conn)
+        rows = [r for f in args.files for r in ingest.analyze_file(Path(f))]
+        ctx = scoring.context_from_rows(rows)
+        results, floor = scoring.select(corpus, ctx, args.distance, args.k)
+        if args.format == "csv":
+            write_csv(results, floor, args.distance)
+        else:
+            print(json.dumps({"fit_floor": floor, "results": results}, indent=2))
 
     elif args.cmd == "essentia":
         out = args.out or (config.DATA_DIR / "essentia.json")

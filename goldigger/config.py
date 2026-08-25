@@ -65,6 +65,27 @@ BANDWIDTH = 0.15            # width of the target novelty band
 REDUNDANCY = 0.35           # mu: penalty for resembling something already picked
 DEFAULT_K = 12
 
+# --- midi context ---
+MIDI_KEYSIG_CONFIDENCE = 0.95  # a stated signature outranks any estimate; not quite a lock
+MIDI_MIN_NOTES = 8          # fewer is a riff fragment, not a statement of the harmony
+MIDI_DRUM_SHARE = 0.05      # channel-10 weight share that counts as "drums are present"
+MIDI_ANCHOR_TOP = 16        # best-fitting chunks that stand in for a context with no audio
+# General MIDI program ranges whose role is unambiguous. Deliberately sparse,
+# like ROLE_KEYWORDS: a wrong role poisons the complement term, a missing one
+# just stays quiet.
+MIDI_PROGRAM_ROLES = [
+    (0, 7, "harmony"),      # pianos
+    (16, 23, "harmony"),    # organs
+    (24, 31, "harmony"),    # guitars
+    (32, 39, "bass"),
+    (52, 54, "vocal"),      # choir/voice
+    (56, 79, "melody"),     # brass, reeds, pipes
+    (80, 87, "melody"),     # synth leads
+    (88, 95, "texture"),    # synth pads
+    (96, 103, "fx"),
+    (120, 127, "fx"),
+]
+
 # --- roles ---
 ROLES = ["drums", "bass", "melody", "harmony", "texture", "vocal", "fx"]
 ROLE_KEYWORDS = {

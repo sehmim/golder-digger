@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
 from . import (ableton, audition, config, db, essentia_runner, ingest, listening,
-               presets, scoring)
+               midi, presets, scoring)
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -25,9 +25,14 @@ state: dict = {"conn": None, "corpus": None}
 # SQLite remains the durable source of truth.
 _ANALYSIS_CACHE_LIMIT = 32
 _ROOT_MASK_CACHE_LIMIT = 16
+# a knob session revisits one context file at every detent, and real-mode
+# extraction of that file is seconds of work per request without this
+_CONTEXT_ROWS_CACHE_LIMIT = 8
 _analysis_cache: OrderedDict[tuple, dict] = OrderedDict()
 _als_cache: OrderedDict[tuple, dict] = OrderedDict()
 _root_mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+_context_rows_cache: OrderedDict[tuple, list] = OrderedDict()
+_midi_cache: OrderedDict[tuple, dict] = OrderedDict()
 _cache_lock = Lock()
 
 
@@ -84,7 +89,9 @@ class IngestReq(BaseModel):
 
 
 class AnalyzeReq(BaseModel):
-    context_ids: list[str]
+    # empty is legal now that a context can also arrive as files: the handler
+    # requires at least one of context_ids / context_paths / midi_path
+    context_ids: list[str] = Field(default_factory=list)
     distance: float | None = Field(
         None, ge=0, le=100,
         description="target novelty percentile, not a threshold;"
@@ -94,6 +101,15 @@ class AnalyzeReq(BaseModel):
     k: int = Field(config.DEFAULT_K, ge=1, le=100)
     session_path: str | None = Field(
         None, description="the .als these chunks came from; anchors tempo and key")
+    midi_path: str | None = Field(
+        None, description="a standard MIDI file; states tempo, key and harmony --"
+                          " the DAW-agnostic session header, usable alone")
+    context_paths: list[str] | None = Field(
+        None, description="audio files used directly as the context, ingested or"
+                          " not -- sample matching without any DAW")
+    bpm: float | None = Field(
+        None, gt=0, description="tempo stated by the caller -- e.g. a plugin"
+                                " reading the host transport; beats everything inferred")
     active_roots: list[str] | None = Field(
         None, description="candidate folders; null means the full legacy corpus")
 
@@ -471,23 +487,79 @@ def _load_als_cached(path: str) -> dict:
     return als
 
 
+def _stamp(path: str) -> tuple:
+    """(abspath, mtime): identity for anything cached off a file on disk."""
+    if not os.path.isfile(path):
+        raise HTTPException(404, f"no such file: {path}")
+    return (os.path.abspath(path), os.path.getmtime(path))
+
+
+def _load_midi_cached(path: str) -> dict:
+    stamp = _stamp(path)
+    cached = _cache_get(_midi_cache, stamp)
+    if cached is not None:
+        return cached
+    try:
+        mid = midi.load_midi(path)
+    except midi.UnreadableMidi as exc:
+        raise HTTPException(400, str(exc))
+    _cache_put(_midi_cache, stamp, mid, 4)
+    return mid
+
+
+def _context_rows_cached(path: str) -> list[dict]:
+    """Analyzed rows for an audio file used directly as context, never ingested."""
+    stamp = _stamp(path)
+    cached = _cache_get(_context_rows_cache, stamp)
+    if cached is not None:
+        return cached
+    try:
+        rows = ingest.analyze_file(Path(path))
+    except Exception as exc:
+        raise HTTPException(400, f"could not analyze {path}: {exc}")
+    _cache_put(_context_rows_cache, stamp, rows, _CONTEXT_ROWS_CACHE_LIMIT)
+    return rows
+
+
+def _merge_contexts(a: dict, b: dict) -> dict:
+    """Resolved chunks and direct audio files, one context: means where both
+    sides measured the same thing, the more confident side where they disagree
+    on a single answer."""
+    clap = a["clap"] + b["clap"]
+    chroma = a["chroma"] + b["chroma"]
+    tonic, kconf = max((a["tonic"], a["kconf"]), (b["tonic"], b["kconf"]),
+                       key=lambda t: t[1])
+    bpms = [x for x in (a["bpm"], b["bpm"]) if x]
+    return {
+        "idx": a["idx"],
+        "clap": (clap / (np.linalg.norm(clap) + 1e-9)).astype(np.float32),
+        "chroma": (chroma / (chroma.sum() + 1e-9)).astype(np.float32),
+        "bpm": float(np.mean(bpms)) if bpms else None,
+        "tconf": float(np.mean([a.get("tconf", 1.0), b.get("tconf", 1.0)])),
+        "tonic": int(tonic), "kconf": float(kconf),
+        "roles": a["roles"] | b["roles"],
+        "hashes": a["hashes"] | b["hashes"],
+    }
+
+
 def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
     """Everything that can alter a completed ranking.
 
     Corpus identity changes whenever ingestion or a manual tag reloads it. The
-    project stamp invalidates a ranking when the saved Live set changes. Keep
-    context order because it is part of the request's exact semantics.
+    file stamps invalidate a ranking when the saved set, the MIDI file, or a
+    direct context file changes. Keep context order because it is part of the
+    request's exact semantics.
     """
-    session_stamp = None
-    if req.session_path:
-        if not os.path.isfile(req.session_path):
-            raise HTTPException(404, f"no such file: {req.session_path}")
-        session_stamp = (os.path.abspath(req.session_path), os.path.getmtime(req.session_path))
+    session_stamp = _stamp(req.session_path) if req.session_path else None
+    midi_stamp = _stamp(req.midi_path) if req.midi_path else None
+    path_stamps = (tuple(_stamp(p) for p in req.context_paths)
+                   if req.context_paths else None)
     roots = None if req.active_roots is None else _normalized_roots(req.active_roots)
     return (
         corpus.cache_token, tuple(req.context_ids),
         None if req.distance is None else float(req.distance), req.preset, req.k,
-        session_stamp, roots,
+        session_stamp, midi_stamp, path_stamps,
+        None if req.bpm is None else float(req.bpm), roots,
     )
 
 
@@ -500,8 +572,26 @@ def analyze(req: AnalyzeReq):
         return cached
 
     allowed = _root_mask(corpus, req.active_roots)
+    if not (req.context_ids or req.context_paths or req.midi_path):
+        raise HTTPException(400, "no context: give context_ids, context_paths"
+                                 " or midi_path")
+    # Novelty is a distance in CLAP space, so the context needs audio to stand
+    # on. Chunks and direct files both carry their own; a MIDI-only context
+    # borrows the corpus's best-fitting chunks as its anchor instead, and the
+    # response says so -- the dial must not present a borrowed anchor as a
+    # measurement of a session it never heard.
+    novelty_anchor = "context"
     try:
-        ctx = scoring.build_context(corpus, req.context_ids)
+        if req.context_paths:
+            rows = [r for p in req.context_paths for r in _context_rows_cached(p)]
+            ctx = scoring.context_from_rows(rows)
+            if req.context_ids:
+                ctx = _merge_contexts(scoring.build_context(corpus, req.context_ids), ctx)
+        elif req.context_ids:
+            ctx = scoring.build_context(corpus, req.context_ids)
+        else:
+            ctx = midi.context_from_midi(corpus, _load_midi_cached(req.midi_path))
+            novelty_anchor = "corpus"
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
@@ -511,6 +601,19 @@ def analyze(req: AnalyzeReq):
     # up scoring against the wrong tempo.
     applied = ableton.apply_session_context(
         ctx, _load_als_cached(req.session_path)) if req.session_path else []
+    if req.midi_path:
+        # after the .als: an exported MIDI file is the more deliberate statement.
+        # On a MIDI-only context this re-applies onto its own numbers, which is
+        # how the response learns which fields were stated rather than inferred.
+        for field in midi.apply_midi_context(ctx, _load_midi_cached(req.midi_path)):
+            if field not in applied:
+                applied.append(field)
+    if req.bpm:
+        # the caller heard it from the transport itself: the last word on tempo
+        ctx["bpm"] = float(req.bpm)
+        ctx["tconf"] = 1.0
+        if "bpm" not in applied:
+            applied.append("bpm")
 
     try:
         preset = presets.get(req.preset)
@@ -541,7 +644,8 @@ def analyze(req: AnalyzeReq):
                 # rows being ranked were written, and a library ingested under mock
                 # stays fiction long after the flag is turned off.
                 "synthetic_novelty": bool(candidate_synthetic.any()),
-                "synthetic_chunks": int(candidate_synthetic.sum())}
+                "synthetic_chunks": int(candidate_synthetic.sum()),
+                "novelty_anchor": novelty_anchor}
     _cache_put(_analysis_cache, cache_key, response, _ANALYSIS_CACHE_LIMIT)
     return response
 
@@ -614,6 +718,35 @@ def _chunk_digest(conn, chunk_ids: list[str]) -> dict:
         "tonic": config.PITCH_NAMES[max(set(tonics), key=tonics.count)] if tonics else None,
         "tags": _top_tags(rows),
         "essentia": _essentia_view(conn, {r["file_hash"] for r in rows}),
+    }
+
+
+class MidiReq(BaseModel):
+    path: str
+
+
+@app.post("/session/midi")
+def session_midi(req: MidiReq):
+    """What a MIDI file states, before it anchors anything.
+
+    The DAW-agnostic sibling of /session/als: no samples to resolve, so the
+    payload is just the statements -- tempo, key (stated signature or estimated
+    from the notes, labelled which), and the roles the programs imply.
+    """
+    mid = _load_midi_cached(req.path)
+    pc, is_major, conf = midi.estimate_key(mid)
+    return {
+        "path": mid["path"],
+        "bpm": mid["bpm"],
+        "beats_per_bar": mid["beats_per_bar"],
+        "key": (f"{config.PITCH_NAMES[pc]} {'major' if is_major else 'minor'}"
+                if pc is not None else None),
+        "key_source": ("stated" if mid["tonic_pc"] is not None
+                       else "estimated" if pc is not None else None),
+        "key_confidence": round(float(conf), 3),
+        "notes": mid["notes"],
+        "drum_share": round(float(mid["drum_share"]), 3),
+        "roles": mid["roles"],
     }
 
 

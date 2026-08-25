@@ -39,6 +39,7 @@ class Corpus:
         self.bpm = np.full(n, np.nan, dtype=np.float32)
         self.tonic = np.full(n, -1, dtype=np.int16)
         self.kconf = np.zeros(n, dtype=np.float32)
+        self.tconf = np.zeros(n, dtype=np.float32)
         self.roles = [None] * n
         self.hashes = [None] * n
         # False for a measured CLAP vector, True for a synthesized or unknown one.
@@ -171,16 +172,50 @@ def build_context(corpus: Corpus, chunk_ids: list[str]) -> dict:
     bpms = corpus.bpm[idx]
     bpms = bpms[~np.isnan(bpms)]
     kc = corpus.kconf[idx]
+    tc = getattr(corpus, "tconf", None)
     return {
         "idx": idx,
         "clap": clap,
         "chroma": chroma,
         "bpm": float(np.median(bpms)) if len(bpms) else None,
+        "tconf": float(tc[idx].mean()) if tc is not None else 1.0,
         # tonic of the most confident member, not a meaningless average
         "tonic": int(corpus.tonic[idx[int(np.argmax(kc))]]) if len(kc) else -1,
         "kconf": float(kc.mean()) if len(kc) else 0.0,
         "roles": {corpus.roles[i] for i in idx if corpus.roles[i]},
         "hashes": {corpus.hashes[i] for i in idx},
+    }
+
+
+def context_from_rows(rows: list[dict]) -> dict:
+    """A context from analyzed rows that were never ingested.
+
+    The DAW-free path: hand the engine an audio file -- a loop, a bounce, a
+    stem from any DAW or none -- and rank the library against it directly.
+    Same aggregation as build_context, but the evidence arrives straight from
+    the extractors instead of as corpus indices, so nothing needs to have been
+    ingested and the novelty anchor is the file's own measured embedding.
+    """
+    rows = [r for r in rows if r.get("clap") is not None]
+    if not rows:
+        raise ValueError("no analyzable audio in context")
+    clap = np.mean([r["clap"] for r in rows], axis=0)
+    clap = clap / (np.linalg.norm(clap) + 1e-9)
+    chroma = np.mean([np.asarray(r["chroma"], dtype=np.float32) for r in rows], axis=0)
+    chroma = chroma / (chroma.sum() + 1e-9)
+    bpms = [r["bpm"] for r in rows if r["bpm"]]
+    kc = [r["key_confidence"] or 0.0 for r in rows]
+    best = int(np.argmax(kc))
+    return {
+        "idx": [],
+        "clap": clap.astype(np.float32),
+        "chroma": chroma.astype(np.float32),
+        "bpm": float(np.median(bpms)) if bpms else None,
+        "tconf": float(np.mean([r["tempo_confidence"] or 0.0 for r in rows])),
+        "tonic": int(rows[best]["tonic_pc"]) if rows[best]["tonic_pc"] is not None else -1,
+        "kconf": float(np.mean(kc)),
+        "roles": {r["role"] for r in rows if r["role"]},
+        "hashes": {r["file_hash"] for r in rows},
     }
 
 
@@ -201,6 +236,15 @@ def fit_all(corpus: Corpus, ctx: dict, preset: presets.Preset | None = None
     H = c * raw + (1.0 - c) * config.NEUTRAL
 
     R = tempo_score_all(corpus.bpm, ctx["bpm"])
+    # the same treatment for tempo: beat trackers return *a* number for steady
+    # noise, and the stored confidence is what separates that from a metronome.
+    # getattr because a corpus here is a structural type -- the baseline and
+    # listening stand-ins predate the array and keep their old behaviour.
+    tc = getattr(corpus, "tconf", None)
+    if tc is not None:
+        ct = np.minimum(tc, ctx.get("tconf", 1.0))
+        R = ct * R + (1.0 - ct) * config.NEUTRAL
+
     P = role_compat_all(corpus, ctx["roles"], preset.role_mode)
 
     eps = 1e-3
