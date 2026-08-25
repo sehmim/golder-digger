@@ -22,3 +22,6 @@ essentia.json
 
 # setuptools wheel-build debris from package-engine.sh installing the repo
 build/
+
+# plugin build tree (JUCE is fetched into it)
+golders-plugin/build/

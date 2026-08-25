@@ -8,11 +8,17 @@ Gold Digger answers one question: *"what else in my sample library works with wh
 already have — at a chosen level of non-obviousness?"* Read `README.md` first for the
 Fit/Novelty idea and the design rationale; it is the authoritative statement of intent.
 
-Two halves, two languages:
+Two halves, two languages (plus a thin third):
 
 - `goldigger/` — the Python engine. Ingestion, feature extraction, scoring, FastAPI.
+  Context can come from a Live set (`ableton.py`), a standard MIDI file (`midi.py`),
+  audio files directly (`context_paths` / `golddigger match`), or a caller-stated
+  tempo — the engine is DAW-agnostic; `.als` is just the richest provider.
 - `golders-desktop/` — the Electron + React desktop app. Spawns the engine and talks
   to it over localhost.
+- `golders-plugin/` — a JUCE AU/VST3 bridge (C++). Captures what the host plays,
+  states the transport tempo, asks the running engine, and hands results back as
+  files draggable onto the host's timeline. No analysis lives in it.
 
 `docs/` holds the deeper references. Start at `docs/README.md`.
 
@@ -44,7 +50,13 @@ PYTHONPATH=. .venv/bin/python -m pytest -q -k tempo_ratios       # one test
 .venv/bin/python -m goldigger.cli ingest ~/Music/Samples
 .venv/bin/python -m goldigger.cli stats
 .venv/bin/python -m goldigger.cli als "~/Music/Set.als" --analyze
+.venv/bin/python -m goldigger.cli midi "~/Music/idea.mid" --analyze  # DAW-agnostic context
+.venv/bin/python -m goldigger.cli match ~/Music/loop.wav             # no DAW, no ingest
 .venv/bin/python -m goldigger.cli serve                          # API on :8420
+
+# --- plugin (AU/VST3 bridge; engine must be running) ---
+cd golders-plugin && cmake -B build && cmake --build build -j
+auval -v aufx Gdig Gldg
 
 # --- desktop ---
 cd golders-desktop
