@@ -40,6 +40,24 @@ over `TEMPO_RATIOS = [1, 2, 0.5, 1.5, 2/3]`. Ratio-aware on purpose: 87 against 
 is a match, and raw BPM difference would wrongly punish half- and double-time. Missing
 tempo returns `NEUTRAL`, not zero.
 
+Then softened by evidence, exactly as H is:
+
+```
+ct = min(corpus.tconf, ctx.tconf)
+R  = ct · R + (1 − ct) · NEUTRAL
+```
+
+A beat tracker returns *a* number for steady noise, and `tempo_confidence` is what
+separates that from a metronome — so an unconfident tempo argues weakly instead of
+punishing a candidate for disagreeing with a measurement nobody trusts. A *stated*
+tempo pins `ctx.tconf` to 1.0 and argues at full strength: the Live set's header,
+a MIDI file's `set_tempo`, or a caller that read the host transport
+(`AnalyzeReq.bpm`) are statements, not estimates.
+
+The context's own `tconf` averages over the members that **have** a tempo, matching
+how `ctx.bpm` is taken. A one-shot stores `tempo_confidence` 0 because it has no
+tempo; letting those zeros average in would discount the loops the median came from.
+
 **P — role.** Complement beats duplication; this is a layering tool, not a search box.
 Same role scores `ROLE_SAME = 0.25`, a different role scores 1.0, and pairs in
 `NEUTRAL_ROLE_PAIRS` (melody/vocal, harmony/texture, texture/fx) score `NEUTRAL`

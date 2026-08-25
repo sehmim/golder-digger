@@ -10,17 +10,25 @@ not an error to hide from the user.
 ## Routes
 
 ### `GET /health`
-`{ok, mock, chunks, db, essentia}`. Used by Electron to decide whether to spawn a child
-process. `essentia` is `native` / `docker` / `null` — how ingest will characterise files.
+`{ok, mock, chunks, synthetic_chunks, presets, chunk_peaks, db, essentia}`. Used by
+Electron to decide whether to spawn a child process. `essentia` is `native` /
+`docker` / `null` — how ingest will characterise files. `chunk_peaks` is the marker
+`src/main/api.ts` checks before adopting an already-listening server; move it whenever
+this payload gains a field that pins a newer build.
 
 ### `POST /ingest`
 `{root}` or `{roots: [...]}` — at least one is required. Each entry may be a folder or a
 single file. Returns `{job_id}` immediately; the work runs in `asyncio.to_thread`
 because extraction is CPU/GPU bound and releases the GIL. Reloads the corpus on finish.
 
-Each file also goes through Essentia as it is ingested (native import; a Docker-only
-machine gets one folder-wide pass at the end instead). That is what fills the `essentia`
-table — `POST /essentia` is now a re-run, not the only way in. A file Essentia refuses
+Essentia fills its table as part of the same job, but *when* depends on the mode.
+Under mock it runs inline per file, because the chunk rows consume its key and tempo.
+In real mode nothing on the Fit/Novelty path reads it, and inline it measured 47% of
+ingest wall time — so the job publishes the corpus as soon as the chunks are final and
+collects the second opinion as a tail, reporting `essentia second opinion (i/n)` in
+`jobs.message`. That tail also heals files ingested with `GOLDDIGGER_ESSENTIA=0`,
+without re-chunking them. A Docker-only machine still gets one folder-wide pass at the
+end. `POST /essentia` is a re-run, not the only way in. A file Essentia refuses
 (silent audio makes MusicExtractor abort) is still ingested; it simply has no row there.
 
 ### `GET /ingest/status/{job_id}`
@@ -88,13 +96,62 @@ not a readable `.als`.
 
 Note this route hashes every referenced file that exists on disk — see `ableton.md`.
 
+### `POST /session/midi`
+`{path}` → what a standard MIDI file *states*, before it anchors anything.
+
+```jsonc
+{
+  "path": "/abs/idea.mid",
+  "bpm": 174.0,                  // the first set_tempo; null when the file states none
+  "beats_per_bar": 4,
+  "key": "E minor",
+  "key_source": "stated",        // "stated" (key signature) | "estimated" (the notes)
+  "key_confidence": 0.95,
+  "notes": 128,
+  "drum_share": 0.31,            // channel-10 weight share
+  "roles": ["bass", "drums"]     // from General MIDI programs
+}
+```
+
+The DAW-agnostic sibling of `/session/als`: no samples to resolve, so the payload is
+just the statements. **400** if the file is not a readable SMF (`UnreadableMidi`
+carries the path and the reason), **404** if it does not exist.
+
 ### `POST /session/analyze`
-`{context_ids[], distance, k, session_path?, active_roots?}` → `{distance,
-fit_floor, corpus_size, count, results[], session_context[], context{},
-synthetic_novelty, synthetic_chunks}`.
+`{context_ids[], distance, k, session_path?, midi_path?, context_paths?, bpm?,
+active_roots?}` → `{distance, fit_floor, corpus_size, count, results[],
+session_context[], context{}, synthetic_novelty, synthetic_chunks, novelty_anchor}`.
 Each result carries `fit`, `novelty`, `components{H,R,P}`, plus `role_source` and the
-chunk's top three `tags`. **400** if no supplied id is known to the corpus, **404** if
-`session_path` names no file, **409** if the corpus is empty.
+chunk's top three `tags`. **400** if no context was supplied at all or no supplied id
+is known to the corpus, **404** if any named file does not exist, **409** if the
+corpus is empty.
+
+The context can arrive four ways, and they compose:
+
+| field | what it contributes |
+|---|---|
+| `context_ids` | resolved corpus chunks — the original path |
+| `context_paths` | audio files analyzed on request, never ingested |
+| `midi_path` | tempo, key and harmony a MIDI file states |
+| `bpm` | a tempo the caller read outright, e.g. a plugin's host transport |
+
+At least one of `context_ids`, `context_paths` or `midi_path` is required. Precedence
+runs from inferred to stated: resolved chunks, then the `.als` header, then the MIDI
+file (the more deliberate statement — a stated key signature overrides even Live's
+stated key), then `bpm`, which is the last word on tempo. `session_context` lists
+every field that was overridden, whichever source did it.
+
+`context_paths` is sample matching with no DAW at all: hand the engine a loop, a
+bounce, or a stem and it ranks the library against that file directly. The rows are
+cached per (path, mtime) — real-mode extraction is seconds of work, and a knob sweep
+is several requests against one unchanged file. A context file that *is* in the
+corpus is still excluded from its own results by the same-file hash rule.
+
+`novelty_anchor` says what the DISTANCE dial measured against. Novelty is a distance
+in CLAP space, so a context needs audio to stand on: `"context"` means the context's
+own embedding, and `"corpus"` means a MIDI-only context borrowed the mean embedding
+of the corpus chunks that fit it best. A borrowed anchor is honest but it is not a
+measurement of a session the engine never heard, and a UI should say so.
 
 `session_path` is the `.als` these chunks came from. Given one, the route calls
 `ableton.apply_session_context` exactly as `golddigger als --analyze` does, and
@@ -107,7 +164,8 @@ is several requests against one unchanged file.
 Live" rather than leaving the user to guess.
 
 Completed rankings are held in a bounded in-memory cache keyed by corpus identity,
-context ids, distance, result count, saved-set path and modification time, and active
+context ids, distance, result count, the path and modification time of every file the
+request named (saved set, MIDI file, each context file), the stated `bpm`, and active
 folder roots. A five-detent sweep therefore computes each distinct ranking once, and
 returning to a previous detent reuses its exact result. Candidate-folder masks have a
 separate bounded cache shared across detents. Both caches disappear when the backend

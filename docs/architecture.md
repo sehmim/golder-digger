@@ -20,6 +20,7 @@
 │  mock.py     deterministic stand-ins         │
 │  scoring.py  fit · novelty · greedy MMR      │
 │  ableton.py  .als → tempo/key/sample refs    │
+│  midi.py     .mid → tempo/key/notes/roles    │
 │  db.py       SQLite schema, float32 blobs    │
 └───────────────────┬──────────────────────────┘
                     ▼
@@ -29,6 +30,13 @@
 The renderer never opens a socket. Everything crosses one boundary: `window.desktop.*`
 in the renderer, `ipcMain.handle` in main, `fetch` from main to the child process.
 
+The desktop app is not the only client. `golders-plugin/` is an AU/VST3 bridge that
+talks to the same `127.0.0.1:8420` from inside a DAW — it captures what the host
+plays, states the transport tempo, and asks `/session/analyze` with `context_paths`.
+It spawns nothing: the engine must already be running, which is why it reports that
+in as many words when the connection is refused. Everything it knows about scoring is
+what the JSON says, so it does not change when scoring does.
+
 ## The path a folder takes
 
 1. **Pick.** `dialog.showOpenDialog` in main returns absolute paths.
@@ -37,9 +45,11 @@ in the renderer, `ipcMain.handle` in main, `fetch` from main to the child proces
 3. **Walk.** `ingest.walk_all()` unions `walk()` over every root, deduping by path.
    `walk()` treats a *file* root as a one-element list, which is what lets a Live set's
    missing samples be ingested individually rather than by folder.
-4. **Analyze.** Per file: sha256 content hash → skip if already in `files` → chunk →
-   extract → upsert. `jobs.message` carries the file currently in flight; `jobs.done`
-   and `jobs.total` carry progress.
+4. **Analyze.** Per file: stat → skip if `files.size`/`files.mtime` still match, so a
+   finished library costs a stat per file rather than a re-read of every byte →
+   otherwise sha256 content hash → skip if already in `files` → chunk → extract →
+   upsert. `jobs.message` carries the file currently in flight; `jobs.done` and
+   `jobs.total` carry progress.
 5. **Poll.** Main polls `/ingest/status/{job_id}` every 400ms and pushes each reading
    to the renderer as an `ingest:progress` event. The UI does no polling of its own.
 6. **Reload.** When the job finishes, the API rebuilds the in-memory corpus.
