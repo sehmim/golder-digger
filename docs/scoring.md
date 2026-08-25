@@ -100,7 +100,11 @@ dimension at a time — see [lines.md](lines.md). It does not change what
    with `max` rather than subtracting, because 0.45 less 0.05 six times is
    0.20000000000000007, which is not `<= 0.20`. Left naive it took one more step and
    admitted candidates a full step below the stated hard minimum, on the default preset,
-   on any thin pool.
+   on any thin pool. Measured on the real 14,544-chunk library: over 200 (context, preset)
+   pairs the gate never relaxed at all, and it stayed inert down to a candidate folder of
+   40 chunks. At 12 — fewer than the `3k` the loop wants — every single ranking had been
+   admitting below the minimum. So this is invisible on a whole library and total the
+   moment someone narrows to one small folder, which is the case the floor exists for.
 3. Picks greedily on `-|novelty − q| / BANDWIDTH − REDUNDANCY · max_similarity_to_picked`.
 
 Greedy because the redundancy term compares against what is *already picked*, which is
