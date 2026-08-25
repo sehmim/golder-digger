@@ -151,6 +151,42 @@ def test_the_timbre_label_names_the_descriptor_that_actually_moved(library):
     assert "wider" in lines._timbre_label(corpus, 1, ctx)
 
 
+def test_the_gate_never_opens_below_the_engines_hard_minimum(library):
+    """0.45 minus 0.05, six times, is 0.20000000000000007 -- which is not
+    `<= 0.20`. The naive loop took one more step and admitted candidates a full
+    step below FIT_FLOOR_MIN, on the default preset, on any thin pool."""
+    reached = []
+    scoring.relax_floor(config.FIT_FLOOR, 99,
+                        lambda f: reached.append(f) or np.array([], dtype=int))
+
+    assert min(reached) >= config.FIT_FLOOR_MIN - 1e-9, reached
+    assert any(abs(f - config.FIT_FLOOR_MIN) < 1e-9 for f in reached), \
+        f"never actually tried the minimum: {reached}"
+
+
+def test_a_line_relaxed_to_the_minimum_admits_nothing_below_it(library):
+    ctx = context(library)
+    # nothing can clear any floor, so the loop runs all the way down
+    route = lines.route(library, ctx, "character",
+                        allowed=np.zeros(len(library), dtype=bool), count=6)
+
+    assert route["fit_floor"] >= config.FIT_FLOOR_MIN
+    assert route["stops"] == []
+
+
+def test_the_log_transform_keeps_the_smallest_real_values(library):
+    """Flatness reaches 2e-10 in a real library. A clamp sized for hertz would
+    collapse the very tail the timbre line exists to reach."""
+    corpus = corpus_of([("tiny", 0, 120.0, 1000.0, 1), ("small", 0, 120.0, 1000.0, 2),
+                        ("mid", 0, 120.0, 1000.0, 3)])
+    corpus.spectral[:, 3] = [2.0e-10, 6.0e-10, 1.0e-2]
+    corpus._timbre = None
+
+    flatness = lines.timbre_vectors(corpus)[:, 3]
+
+    assert flatness[0] < flatness[1], "two distinct values collapsed onto one"
+
+
 def test_a_line_with_nothing_to_measure_reports_unavailable(library):
     """A MIDI-only context has no sound, so it has no position in descriptor
     space. Drawing that line greyed out is information; inventing stops is not."""

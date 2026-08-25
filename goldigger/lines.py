@@ -17,6 +17,8 @@ questions.
 """
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from . import config, presets, scoring
@@ -79,7 +81,7 @@ def timbre_vectors(corpus) -> np.ndarray:
 
     Cached on the corpus like role_codes: the standardisation is over the whole
     library, so it cannot be computed per request without changing with the
-    candidate set. Hz descriptors are logged first -- see config.TIMBRE_LOG.
+    candidate set. Every descriptor is logged first -- see config.TIMBRE_LOG.
     """
     cached = getattr(corpus, "_timbre", None)
     if cached is not None:
@@ -88,10 +90,18 @@ def timbre_vectors(corpus) -> np.ndarray:
     raw = np.array(corpus.spectral, dtype=np.float64, copy=True)
     for j, name in enumerate(config.TIMBRE_DESCRIPTORS):
         if name in config.TIMBRE_LOG:
-            # a non-positive centroid is a silent chunk, not a very dark one
-            column = raw[:, j]
-            raw[:, j] = np.where(column > 0, np.log(np.maximum(column, 1e-9)), np.nan)
-    with np.errstate(invalid="ignore"):
+            # a non-positive centroid is a silent chunk, not a very dark one.
+            # The inner `where` only keeps np.log off those entries; substituting
+            # a clamp instead would truncate real values -- flatness reaches 2e-10
+            # in a real library, well under any floor picked for hertz.
+            positive = raw[:, j] > 0
+            raw[:, j] = np.where(
+                positive, np.log(np.where(positive, raw[:, j], 1.0)), np.nan)
+    # a descriptor nobody measured is an all-NaN column, and nanmedian says so
+    # through warnings.warn -- which errstate does not touch. NaN is the answer
+    # we want here (the line reports itself unavailable), just not the noise.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         centre = np.nanmedian(raw, axis=0)
         # median absolute deviation: a library with one hyper-bright oddity
         # should not restate every other chunk as "average"
@@ -140,7 +150,8 @@ def context_timbre(corpus, ctx: dict) -> np.ndarray | None:
     if not idx:
         return None
     vectors = timbre_vectors(corpus)[idx]
-    with np.errstate(invalid="ignore"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         mean = np.nanmean(vectors, axis=0)
     return None if not np.all(np.isfinite(mean)) else mean
 
@@ -262,12 +273,9 @@ def route(corpus, ctx: dict, key: str, allowed: np.ndarray | None = None,
     distance = DISTANCES[key](corpus, ctx)
     measured = np.isfinite(distance)
 
-    floor = preset.fit_floor
-    while True:
-        pool = np.where((fit >= floor) & ~same_file & allowed & measured)[0]
-        if len(pool) >= count or floor <= config.FIT_FLOOR_MIN:
-            break
-        floor -= config.FIT_FLOOR_STEP
+    floor, pool = scoring.relax_floor(
+        preset.fit_floor, count,
+        lambda f: np.where((fit >= f) & ~same_file & allowed & measured)[0])
     summary = {"key": key, "fit_floor": round(float(floor), 3),
                "fit_floor_requested": preset.fit_floor,
                "fit_floor_relaxed": floor < preset.fit_floor}

@@ -96,6 +96,11 @@ dimension at a time — see [lines.md](lines.md). It does not change what
    hands back the neighbouring bars of the clip you already have.
 2. Relaxes `FIT_FLOOR` by `FIT_FLOOR_STEP` until the pool holds `3k` candidates or the
    floor hits `FIT_FLOOR_MIN`. The floor actually used is returned alongside the results.
+   The loop lives in `relax_floor()` so `lines.py` cannot drift from it — and it clamps
+   with `max` rather than subtracting, because 0.45 less 0.05 six times is
+   0.20000000000000007, which is not `<= 0.20`. Left naive it took one more step and
+   admitted candidates a full step below the stated hard minimum, on the default preset,
+   on any thin pool.
 3. Picks greedily on `-|novelty − q| / BANDWIDTH − REDUNDANCY · max_similarity_to_picked`.
 
 Greedy because the redundancy term compares against what is *already picked*, which is

@@ -294,6 +294,26 @@ def same_file_mask(corpus: Corpus, ctx: dict) -> np.ndarray:
     return np.isin(codes, ctx_codes)
 
 
+def relax_floor(start: float, target: int, pool_at):
+    """Open the Fit gate a step at a time until the pool is big enough.
+
+    Returns the floor actually used and the pool it admitted, because a caller
+    that reports the floor it *asked* for cannot tell a gate that held from one
+    that quietly opened.
+
+    `max` rather than a bare subtraction: 0.45 - 0.05 six times is
+    0.20000000000000007, which is not `<= 0.20`, so the naive loop took one more
+    step and admitted candidates a full step below the engine's stated hard
+    minimum. Every default-preset ranking on a thin pool was affected.
+    """
+    floor = start
+    while True:
+        pool = pool_at(floor)
+        if len(pool) >= target or floor <= config.FIT_FLOOR_MIN:
+            return floor, pool
+        floor = max(config.FIT_FLOOR_MIN, floor - config.FIT_FLOOR_STEP)
+
+
 def select(corpus: Corpus, ctx: dict, distance: float | None = None,
            k: int = config.DEFAULT_K, allowed: np.ndarray | None = None,
            preset: presets.Preset | None = None):
@@ -316,12 +336,9 @@ def select(corpus: Corpus, ctx: dict, distance: float | None = None,
     # the neighbouring bars of the clip you already have
     same_file = same_file_mask(corpus, ctx)
 
-    floor = preset.fit_floor
-    while True:
-        pool = np.where((fit >= floor) & ~same_file & allowed)[0]
-        if len(pool) >= 3 * k or floor <= config.FIT_FLOOR_MIN:
-            break
-        floor -= config.FIT_FLOOR_STEP
+    floor, pool = relax_floor(
+        preset.fit_floor, 3 * k,
+        lambda f: np.where((fit >= f) & ~same_file & allowed)[0])
 
     picked: list[int] = []
     while len(picked) < k and len(pool):

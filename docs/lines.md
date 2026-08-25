@@ -95,7 +95,9 @@ Three ways a line can come up short, each visible in the payload:
 - **`fit_floor_relaxed`** — the gate had to open below the preset's floor to find
   enough stops. Each line relaxes **independently**: a thin pool on timbre is not
   a reason to lower the bar on harmony. The UI shows a "gate opened" badge,
-  because from the drawing alone a relaxed line and a held one are identical.
+  because from the drawing alone a relaxed line and a held one are identical. The
+  relaxation itself is `scoring.relax_floor`, shared with `select` so the two
+  cannot drift, and it never goes below `FIT_FLOOR_MIN`.
 - **NaN, not zero** — a chunk with no tempo has no position on the groove line. It
   drops off rather than ranking as maximally similar, which is what a zero would
   quietly claim.
