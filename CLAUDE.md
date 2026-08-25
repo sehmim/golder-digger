@@ -52,6 +52,7 @@ PYTHONPATH=. .venv/bin/python -m pytest -q -k tempo_ratios       # one test
 .venv/bin/python -m goldigger.cli als "~/Music/Set.als" --analyze
 .venv/bin/python -m goldigger.cli midi "~/Music/idea.mid" --analyze  # DAW-agnostic context
 .venv/bin/python -m goldigger.cli match ~/Music/loop.wav             # no DAW, no ingest
+.venv/bin/python -m goldigger.cli lines <chunk-id> [<chunk-id>...]   # the transit map
 .venv/bin/python -m goldigger.cli serve                          # API on :8420
 
 # --- plugin (AU/VST3 bridge; engine must be running) ---
@@ -127,6 +128,13 @@ Three things that explain most of the code:
    CLAP distance. The DISTANCE dial targets a novelty percentile *among things that
    already fit* — it is not a similarity threshold. Collapsing them into one weighted
    distance is the thing this design exists to avoid. See `docs/scoring.md`.
+
+   `lines.py` is the other half of that argument: DISTANCE can say how far but not
+   *in what respect*, so the transit map ranks a scoped distance one dimension at a
+   time — harmony, groove, timbre, character — and draws them as four metro lines
+   out of your session. It does not change `novelty_all` and is not a second dial.
+   A stop's `position` is a percentile *within its own line only*. See
+   `docs/lines.md`.
 
 2. **The corpus lives in RAM.** On boot every embedding is loaded into one `(N, 512)`
    NumPy array, so moving DISTANCE re-ranks from cached scores without touching a

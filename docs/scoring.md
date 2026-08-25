@@ -83,6 +83,11 @@ pool is sparse (below), which would otherwise silently shift every novelty value
 the same context. Changing the active folders can therefore change the percentile
 represented by the same knob position.
 
+One scalar over one 512-dimensional space cannot say *far in what respect*. That
+question is answered separately, by `lines.py`, which ranks a scoped distance one
+dimension at a time — see [lines.md](lines.md). It does not change what
+`novelty_all` measures and is not a second dial.
+
 ## Selection is greedy MMR
 
 `select()`:

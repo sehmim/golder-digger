@@ -13,8 +13,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
-from . import (ableton, audition, config, db, essentia_runner, ingest, listening,
-               midi, presets, scoring)
+from . import (ableton, audition, config, db, essentia_runner, ingest, lines,
+               listening, midi, presets, scoring)
 
 app = FastAPI(title="Gold Digger", version="0.1.0")
 state: dict = {"conn": None, "corpus": None}
@@ -551,36 +551,13 @@ def _merge_contexts(a: dict, b: dict) -> dict:
     }
 
 
-def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
-    """Everything that can alter a completed ranking.
+def _build_context(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple[dict, str, list]:
+    """(context, novelty anchor, fields that were stated rather than inferred).
 
-    Corpus identity changes whenever ingestion or a manual tag reloads it. The
-    file stamps invalidate a ranking when the saved set, the MIDI file, or a
-    direct context file changes. Keep context order because it is part of the
-    request's exact semantics.
+    Shared by every route that ranks: one place decides how the four context
+    sources compose, so a map and a list can never disagree about what session
+    they are describing.
     """
-    session_stamp = _stamp(req.session_path) if req.session_path else None
-    midi_stamp = _stamp(req.midi_path) if req.midi_path else None
-    path_stamps = (tuple(_stamp(p) for p in req.context_paths)
-                   if req.context_paths else None)
-    roots = None if req.active_roots is None else _normalized_roots(req.active_roots)
-    return (
-        corpus.cache_token, tuple(req.context_ids),
-        None if req.distance is None else float(req.distance), req.preset, req.k,
-        session_stamp, midi_stamp, path_stamps,
-        None if req.bpm is None else float(req.bpm), roots,
-    )
-
-
-@app.post("/session/analyze")
-def analyze(req: AnalyzeReq):
-    corpus = _corpus()
-    cache_key = _analysis_cache_key(corpus, req)
-    cached = _cache_get(_analysis_cache, cache_key)
-    if cached is not None:
-        return cached
-
-    allowed = _root_mask(corpus, req.active_roots)
     if not (req.context_ids or req.context_paths or req.midi_path):
         raise HTTPException(400, "no context: give context_ids, context_paths"
                                  " or midi_path")
@@ -623,6 +600,40 @@ def analyze(req: AnalyzeReq):
         ctx["tconf"] = 1.0
         if "bpm" not in applied:
             applied.append("bpm")
+    return ctx, novelty_anchor, applied
+
+
+def _analysis_cache_key(corpus: scoring.Corpus, req: AnalyzeReq) -> tuple:
+    """Everything that can alter a completed ranking.
+
+    Corpus identity changes whenever ingestion or a manual tag reloads it. The
+    file stamps invalidate a ranking when the saved set, the MIDI file, or a
+    direct context file changes. Keep context order because it is part of the
+    request's exact semantics.
+    """
+    session_stamp = _stamp(req.session_path) if req.session_path else None
+    midi_stamp = _stamp(req.midi_path) if req.midi_path else None
+    path_stamps = (tuple(_stamp(p) for p in req.context_paths)
+                   if req.context_paths else None)
+    roots = None if req.active_roots is None else _normalized_roots(req.active_roots)
+    return (
+        corpus.cache_token, tuple(req.context_ids),
+        None if req.distance is None else float(req.distance), req.preset, req.k,
+        session_stamp, midi_stamp, path_stamps,
+        None if req.bpm is None else float(req.bpm), roots,
+    )
+
+
+@app.post("/session/analyze")
+def analyze(req: AnalyzeReq):
+    corpus = _corpus()
+    cache_key = _analysis_cache_key(corpus, req)
+    cached = _cache_get(_analysis_cache, cache_key)
+    if cached is not None:
+        return cached
+
+    allowed = _root_mask(corpus, req.active_roots)
+    ctx, novelty_anchor, applied = _build_context(corpus, req)
 
     try:
         preset = presets.get(req.preset)
@@ -728,6 +739,34 @@ def _chunk_digest(conn, chunk_ids: list[str]) -> dict:
         "tags": _top_tags(rows),
         "essentia": _essentia_view(conn, {r["file_hash"] for r in rows}),
     }
+
+
+class LinesReq(AnalyzeReq):
+    """The same context as a ranking, asked for as routes rather than a list.
+
+    Inherits every context field so a caller that can build a context can draw
+    the map -- `distance` is simply unused: a line's stops span the range that
+    one dial would have picked a single point from.
+    """
+    stops: int | None = Field(None, ge=2, le=12)
+
+
+@app.post("/session/lines")
+def session_lines(req: LinesReq):
+    """Every line out of this session, with its stops and the interchanges.
+
+    The map DIGLINE asks for: novelty scoped to one dimension at a time, so
+    "farther" can say *farther in what respect*. Fit gates every stop, so the
+    end of a line is strange but still works.
+    """
+    corpus = _corpus()
+    ctx, _anchor, _applied = _build_context(corpus, req)
+    try:
+        preset = presets.get(req.preset)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return lines.network(corpus, ctx, _root_mask(corpus, req.active_roots),
+                         preset, req.stops)
 
 
 class MidiReq(BaseModel):

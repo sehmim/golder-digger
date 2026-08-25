@@ -2,9 +2,10 @@
 import argparse
 import csv
 import json
+import os
 import sys
 
-from . import ableton, config, db, essentia_runner, ingest, midi, scoring
+from . import ableton, config, db, essentia_runner, ingest, lines, midi, scoring
 
 
 CSV_FIELDS = ["rank", "chunk_id", "path", "role", "bpm", "tonic", "is_major",
@@ -69,6 +70,11 @@ def main():
     p.add_argument("--distance", type=float, default=50)
     p.add_argument("-k", type=int, default=config.DEFAULT_K)
     p.add_argument("--format", choices=["json", "csv"], default="json")
+
+    p = sub.add_parser("lines", help="the transit map: every line out of a context")
+    p.add_argument("context_ids", nargs="+")
+    p.add_argument("--stops", type=int, default=config.LINE_STOPS)
+    p.add_argument("--format", choices=["text", "json"], default="text")
 
     p = sub.add_parser("match", help="rank the corpus against audio files --"
                                      " no DAW, no ingest")
@@ -151,6 +157,28 @@ def main():
             else:
                 print(json.dumps({"fit_floor": floor, "novelty_anchor": "corpus",
                                   "results": results}, indent=2))
+
+    elif args.cmd == "lines":
+        corpus = ingest.load_corpus(conn)
+        ctx = scoring.build_context(corpus, args.context_ids)
+        ctx["timbre"] = lines.context_timbre(corpus, ctx)
+        net = lines.network(corpus, ctx, count=args.stops)
+        if args.format == "json":
+            print(json.dumps(net, indent=2))
+        else:
+            for route in net["lines"]:
+                relaxed = ("  (floor relaxed to %.2f)" % route["fit_floor"]
+                           if route["fit_floor_relaxed"] else "")
+                print(f"\n{route['colour'].upper():7s} {route['key']:10s}"
+                      f" {route['blurb']}{relaxed}")
+                for stop in route["stops"] or [None]:
+                    if stop is None:
+                        print("   -- nothing measurable on this line")
+                        continue
+                    print(f"   {stop['position']:.2f}  fit={stop['fit']:.2f}"
+                          f"  {stop['why']:<32s} {os.path.basename(stop['path'])}")
+            if net["interchanges"]:
+                print(f"\ninterchanges: {len(net['interchanges'])}", file=sys.stderr)
 
     elif args.cmd == "match":
         from pathlib import Path

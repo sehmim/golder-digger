@@ -39,18 +39,26 @@ an oversight — but it does not count as evidence for anything.
 
 ## Real gaps
 
-**1. Novelty is CLAP-only.** The brief's pilot novelty is
+**1. Novelty is CLAP-only — half closed.** The brief's pilot novelty is
 `0.70·pct(d_CLAP) + 0.30·pct(d_timbre)`, each independently percentile-normalized.
-`novelty_all` uses the CLAP term alone. The timbre half is not missing data:
-`chunks.spectral` already holds centroid / rolloff / bandwidth / flatness per
-chunk (`features.spectral_stats`), it is simply never loaded into `Corpus`. This is
-the cheapest genuine improvement on the list, and it makes "why it's far" say
-something a producer can hear.
+`novelty_all` still uses the CLAP term alone, so **the DISTANCE dial is unchanged**.
 
-**2. Nothing explains itself to the user.** `select` returns `fit` and the H/R/P
-components, and the brief is explicit that showing "Fit: 83%" is worse than useless
-— 83 has no calibrated meaning. What it wants instead is generated from the terms
-we already compute:
+What has been built is the missing half of the ingredients. `chunks.spectral` had
+held centroid / rolloff / bandwidth / flatness per chunk since
+`features.spectral_stats` was written and was simply never read; `Corpus.spectral`
+now loads it, and `lines.timbre_distance` is a percentile-normalized descriptor
+distance over it (log-scaled, median/MAD-standardised — see [lines.md](lines.md)).
+It is the blue line on the transit map.
+
+What remains is the blend itself: deciding whether the dial should become
+`0.70·pct(d_CLAP) + 0.30·pct(d_timbre)` is a change to what DISTANCE *means*, and
+the weights are the brief's guess. Worth doing after the listening study, not
+before it — gap 4 is what would tell us whether the blend helps.
+
+**2. Nothing explains itself to the user — half closed.** `select` returns `fit`
+and the H/R/P components, and the brief is explicit that showing "Fit: 83%" is worse
+than useless — 83 has no calibrated meaning. What it wants instead is generated from
+the terms we already compute:
 
 ```
 Why it fits:  82% pitch-class overlap · 2:1 tempo relation
@@ -60,6 +68,17 @@ Why it's far: timbre 78th percentile · embedding novelty 74th percentile
 Every phrase traceable to a score component, so explanations are faithful by
 construction rather than prose written after the fact.
 
+Each stop on the transit map now carries exactly that: a `why` naming the term that
+actually moved it out, compared term against term rather than guessed at. See
+[lines.md](lines.md) — an early version cheerfully said "a tone up" about a stop
+whose interval barely contributed, which is the failure mode this construction
+exists to make impossible.
+
+The ranked list is still the old story: `/session/analyze` returns raw `fit`,
+`novelty` and `components{H,R,P}` and no phrasing at all. Porting the `why`
+generators from `lines.py` to the analyze path is the obvious next step, and the
+labels are already written.
+
 **3. Distance has no notion of what may vary.** The brief's sharpest reframing:
 
 > Distance tells the system how much permission it has to violate *unlocked*
@@ -67,9 +86,19 @@ construction rather than prose written after the fact.
 
 with `N = Σ_{k ∈ unlocked} w_k d_k` and an optional `Preserve [Harmony] [Groove]
 [Role]` control. Presets get partway there (`role_mode` decides how hard role
-argues), but there is no per-dimension lock and novelty is not computed over a
-selectable dimension set. This answers the standing weakness in "farther": farther
-along *which* dimensions?
+argues). This answers the standing weakness in "farther": farther along *which*
+dimensions?
+
+**Half closed, from the other end.** `lines.py` computes novelty over a single
+scoped dimension — harmony, groove, timbre or character — four times, and draws the
+four answers as a transit map, so "farther" finally names a respect. That is the
+degenerate case of the brief's formula: one dimension unlocked, weight 1.
+
+The general case is still missing. There is no lock control, no arbitrary unlocked
+set, and no weighted combination of dimensions; the lines are alternatives you pick
+between rather than a set you configure. Whether the general control is worth
+building is a UI question the map is a cheap way to answer first — if nobody rides
+a line, nobody wants a lock.
 
 **4. The dial has never been shown to move a human.** `results/baselines.txt`
 shows Gold Digger returns different material from inverse similarity and holds fit
@@ -109,13 +138,15 @@ choice of test corpus, not an architecture change.
 
 ## Order of work
 
-1. Timbre term in novelty (data already on disk; needs `Corpus.spectral` and a
-   percentile-normalized descriptor distance).
-2. Faithful explanations from the existing components; stop presenting Fit as a
-   number.
+1. ~~Timbre term in novelty~~ — measured and ranked (`Corpus.spectral`,
+   `lines.timbre_distance`). Blending it into the DISTANCE dial is deliberately
+   held until (3).
+2. Faithful explanations — done on the map (`lines.py`'s `why`), still missing on
+   the ranked list. Port the labels; stop presenting Fit as a number.
 3. Run the listening study on a real corpus with real vectors. Everything below is
-   downstream of whether the curve exists.
-4. Preserve locks + dimension-scoped novelty.
+   downstream of whether the curve exists. The map gives it a second question worth
+   asking: does a scoped line beat the single dial at the same measured novelty?
+4. Preserve locks + arbitrary dimension-scoped novelty, if the map earns it.
 5. Pareto/multi-objective view as a companion to the band, once there are two
    objectives worth trading.
 

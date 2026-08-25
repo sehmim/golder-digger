@@ -8,6 +8,7 @@ These files go deeper on one area each.
 |---|---|
 | [architecture.md](architecture.md) | You need the whole path: a folder on disk → ranked candidates on screen. |
 | [scoring.md](scoring.md) | You are touching Fit, Novelty, DISTANCE, or any constant in `config.py`. |
+| [lines.md](lines.md) | You are working on the transit map — the four lines, their stops, or why `position` is not DISTANCE. |
 | [data-model.md](data-model.md) | You are writing SQL, adding a column, or wondering what a `chunk_id` is. |
 | [api.md](api.md) | You are adding or calling an HTTP route. |
 | [ableton.md](ableton.md) | You are working on `.als` parsing or sample resolution. |

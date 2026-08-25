@@ -185,6 +185,27 @@ under mock stays fiction long after the flag is turned off.
 
 `fit_floor` is the floor *actually used* after relaxation, not the configured one.
 
+### `POST /session/lines`
+Same request body as `/session/analyze` minus `distance` and `k`, plus an optional
+`stops` (2–12) → `{lines[], interchanges[], preset, fit_floor_requested}`. Same 400 /
+404 / 409 conditions, for the same reasons — the context is built by the identical
+code path.
+
+Each line is `{key, colour, blurb, stops[], available, fit_floor,
+fit_floor_requested, fit_floor_relaxed}`; each stop is `{chunk_id, path, role, bpm,
+tonic, fit, position, why}`. See [lines.md](lines.md) for what a line is and why
+`position` is not the DISTANCE dial.
+
+Two things a caller must not confuse. `position` is a percentile *within this line's
+own pool*, so a stop at 0.9 on green is far in harmony and says nothing at all about
+its timbre. And `fit_floor` is per line — each one relaxes its own gate
+independently, because a thin pool on the timbre line is not a reason to lower the
+bar on harmony. `available: false` means the library cannot answer that line yet
+(nothing measured), which is worth drawing greyed out rather than omitting.
+
+There is no `distance`: a route is not scored at a target novelty, it is the whole
+axis. Ask `/session/analyze` when you want one ranked answer at one setting.
+
 ### `POST /chunk/{id}/tag`
 `{role}` → manual override, sets `role_source='manual'` and reloads the corpus.
 

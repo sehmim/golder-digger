@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { baseName } from '../../application/api'
-import type { AnalyzeResult, Candidate } from '../../application/api'
+import type { AnalyzeResult, Candidate, Network } from '../../application/api'
 import Waveform from '../../shared/components/Waveform'
 import type { Preview } from '../gold-digger/usePreview'
+import TransitMap from './TransitMap'
 
 export type GoldenResultsState =
   | { status: 'idle' }
@@ -10,12 +11,21 @@ export type GoldenResultsState =
   | { status: 'ready'; distance: number; result: AnalyzeResult }
   | { status: 'error'; distance: number; message: string }
 
+export type GoldenNetworkState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; network: Network }
+  | { status: 'error'; message: string }
+
 interface GoldenResultsProps {
   state: Exclude<GoldenResultsState, { status: 'idle' }>
+  network: GoldenNetworkState
   preview: Preview
   /** Playback is stretched to this, so the waveforms are drawn to it too. */
   sessionBpm: number | null
   onBack: () => void
+  /** Fetched lazily: the map asks the engine a different question than the dial. */
+  onShowMap: () => void
 }
 
 function uniqueFiles(candidates: Candidate[]): Candidate[] {
@@ -37,10 +47,13 @@ function resultMeta(candidate: Candidate): string {
 
 export default function GoldenResults({
   state,
+  network,
   preview,
   sessionBpm,
-  onBack
+  onBack,
+  onShowMap
 }: GoldenResultsProps): React.JSX.Element {
+  const [view, setView] = useState<'list' | 'map'>('list')
   const files = state.status === 'ready' ? uniqueFiles(state.result.results) : []
 
   // Escape closes. The × can be reached by mouse, but a modal that only exits
@@ -73,7 +86,40 @@ export default function GoldenResults({
         ×
       </button>
 
+      {/* Two answers to one context. The dial asks "how far", the map asks
+          "far in what respect" -- they are different questions, so the map is
+          a view rather than another sort order. */}
+      {state.status === 'ready' ? (
+        <div className="golden-results__views" role="tablist" aria-label="Result view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'list'}
+            data-active={view === 'list' || undefined}
+            onClick={() => setView('list')}
+          >
+            Ranked
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'map'}
+            data-active={view === 'map' || undefined}
+            onClick={() => {
+              setView('map')
+              if (network.status === 'idle') onShowMap()
+            }}
+          >
+            Map
+          </button>
+        </div>
+      ) : null}
+
       <div className="golden-results__body" aria-live="polite">
+        {state.status === 'ready' && view === 'map' ? (
+          <MapView network={network} preview={preview} />
+        ) : null}
+
         {state.status === 'loading' ? (
           <span className="spinner spinner--large" aria-label="Ranking sounds" />
         ) : null}
@@ -82,11 +128,11 @@ export default function GoldenResults({
           <p className="golden-results__message" data-error>{state.message}</p>
         ) : null}
 
-        {state.status === 'ready' && files.length === 0 ? (
+        {state.status === 'ready' && view === 'list' && files.length === 0 ? (
           <p className="golden-results__message">No matching sounds.</p>
         ) : null}
 
-        {state.status === 'ready' && files.length > 0 ? (
+        {state.status === 'ready' && view === 'list' && files.length > 0 ? (
           <>
             {/* <div className="golden-results__mode">
               <button
@@ -140,5 +186,27 @@ export default function GoldenResults({
         ) : null}
       </div>
     </section>
+  )
+}
+
+function MapView({
+  network,
+  preview
+}: {
+  network: GoldenNetworkState
+  preview: Preview
+}): React.JSX.Element {
+  if (network.status === 'loading' || network.status === 'idle') {
+    return <span className="spinner spinner--large" aria-label="Drawing the lines" />
+  }
+  if (network.status === 'error') {
+    return <p className="golden-results__message" data-error>{network.message}</p>
+  }
+  return (
+    <TransitMap
+      network={network.network}
+      onPreview={preview.toggle}
+      playing={preview.playing}
+    />
   )
 }

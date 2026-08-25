@@ -309,6 +309,18 @@ app.whenReady().then(() => {
   )
 
   ipcMain.handle(
+    'session:lines',
+    (
+      _event,
+      contextIds: string[],
+      stops: number | undefined,
+      sessionPath: string | null,
+      activeRoots: string[] | null | undefined,
+      preset: string | null | undefined
+    ) => api.sessionLines(contextIds, stops, sessionPath, activeRoots, preset)
+  )
+
+  ipcMain.handle(
     'session:analyze',
     (
       _event,

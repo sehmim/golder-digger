@@ -6,7 +6,7 @@ import { usePreview } from '../gold-digger/usePreview'
 import FolderStrip from './FolderStrip'
 import GoldenKnob from './GoldenKnob'
 import GoldenResults from './GoldenResults'
-import type { GoldenResultsState } from './GoldenResults'
+import type { GoldenNetworkState, GoldenResultsState } from './GoldenResults'
 
 const RESULT_COUNT = 30
 
@@ -26,6 +26,7 @@ export default function GoldenApp({
   const { state, actions } = useApplication()
   const [value, setValue] = useState(50)
   const [results, setResults] = useState<GoldenResultsState>({ status: 'idle' })
+  const [network, setNetwork] = useState<GoldenNetworkState>({ status: 'idle' })
   const [contextLoading, setContextLoading] = useState(false)
   const [contextError, setContextError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
@@ -160,9 +161,39 @@ export default function GoldenApp({
       })
   }
 
+  // A drawn network is only true of the context it was drawn for. Nothing else
+  // invalidates it -- the dial does not enter into it -- so this is the one
+  // place it has to be thrown away.
+  useEffect(() => {
+    setNetwork({ status: 'idle' })
+  }, [project?.session.path, state.activeFolderRoots])
+
+  // The map is a second question about the same context, not a re-sort of the
+  // answer already on screen, so it costs its own round trip -- taken only when
+  // someone actually asks for it.
+  function drawLines(): void {
+    if (!project || project.context_ids.length === 0) return
+    setNetwork({ status: 'loading' })
+    void window.desktop
+      .sessionLines(
+        project.context_ids,
+        undefined,
+        project.session.path,
+        state.activeFolderRoots
+      )
+      .then((result) => setNetwork({ status: 'ready', network: result }))
+      .catch((cause) =>
+        setNetwork({
+          status: 'error',
+          message: cause instanceof Error ? cause.message : String(cause)
+        })
+      )
+  }
+
   function returnToKnob(): void {
     requestGeneration.current += 1
     setResults({ status: 'idle' })
+    setNetwork({ status: 'idle' })
   }
 
   return (
@@ -202,9 +233,11 @@ export default function GoldenApp({
       />
       {results.status !== 'idle' ? <GoldenResults
           state={results}
+          network={network}
           preview={preview}
           sessionBpm={project?.session.tempo ?? null}
           onBack={returnToKnob}
+          onShowMap={drawLines}
         /> : null}
     </main>
   )

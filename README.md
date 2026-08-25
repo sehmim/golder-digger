@@ -19,6 +19,14 @@ The **DISTANCE** dial (0–100) is a *target novelty percentile among things tha
 already fit* — not a similarity threshold. DISTANCE 70 means "show me the 70th
 percentile of non-obviousness among compatible candidates."
 
+One dial can say *how far* but never *far in what respect* — it has collapsed
+every dimension into one number before you see it. So there is a second view.
+**Lines** are the same question asked one dimension at a time: your session is an
+interchange, and four coloured routes lead out of it — harmony, groove, timbre,
+character. Ride green and the notes move away; ride orange and the pulse does.
+Fit still gates every stop, so the far end of a line is strange *and still works*.
+See [docs/lines.md](docs/lines.md).
+
 ## Status
 
 Feature extraction runs in **mock mode by default** (`GOLDDIGGER_MOCK=1`):

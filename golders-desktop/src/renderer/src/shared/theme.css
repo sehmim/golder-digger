@@ -13,4 +13,23 @@
   /* Meaningful status exceptions. */
   --color-success: #7d9669;
   --color-error: #a3402a;
+
+  /* The transit palette. Montreal names its metro lines by colour and so does
+     the engine: each line is one dimension you can ride away from your session
+     along. This is the only place the colour tokens the API returns
+     (green/orange/blue/yellow) become pixels — nothing else may use them, or
+     the map stops meaning anything. */
+  --line-green: #128a4e;
+  --line-orange: #dd6f11;
+  --line-blue: #1f6cc0;
+  --line-yellow: #d4ae06;
+
+  /* The same four lines, darkened enough to be read as small text on
+     --color-background. A metro yellow is a fine colour for a painted rail and
+     an unreadable one for a caption; rather than compromise the rails, the ink
+     is a separate token. */
+  --line-green-ink: #0b6b3b;
+  --line-orange-ink: #a8500a;
+  --line-blue-ink: #185899;
+  --line-yellow-ink: #6f5804;
 }

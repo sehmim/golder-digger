@@ -79,6 +79,7 @@ src/renderer/src/
       GoldenApp.tsx
       GoldenKnob.tsx
       GoldenResults.tsx
+      TransitMap.tsx
     dev/
       AnalysisFilesTab.tsx
       ContextTab.tsx
@@ -277,6 +278,20 @@ exceptions. Renderer CSS contains no other literal colors.
 New interfaces should use these tokens directly. A new literal belongs in the
 theme only when it communicates meaning that the five colors cannot.
 
+The transit palette is that exception. `--line-green` / `--line-orange` /
+`--line-blue` / `--line-yellow` are Montreal's metro colours, and they carry
+meaning the five cannot: each names one dimension you can ride away from your
+session along. The API returns the token name (`"green"`), never a hex value, and
+`.transit-line[data-colour=…]` is the only place it becomes a pixel — a second
+mapping anywhere else and the map stops meaning anything.
+
+Each has a `--line-*-ink` sibling, darkened enough to pass as small text on
+`--color-background`. A metro yellow is a fine colour for a painted rail and an
+unreadable one for a caption, so rather than compromise the rails, the ink is its
+own token. Rails and stops use `--line`; anything with letters in it uses `--ink`.
+
+`TransitMap.tsx` renders it. See [lines.md](lines.md) for what the lines mean.
+
 ## IPC surface
 
 | Channel | Direction | Purpose |
@@ -285,6 +300,7 @@ theme only when it communicates meaning that the five colors cannot.
 | `project:select` | invoke | Ableton `.als` file dialog. |
 | `api:status` | invoke | API readiness and startup error. |
 | `folders:status` | invoke | Verify analyzed chunk counts for registered roots. |
+| `session:lines` | invoke | The transit network for a context — four scoped lines and their stops. |
 | `settings:load` | invoke | Load versioned user-level application settings. |
 | `settings:save` | invoke | Atomically replace the user settings file. |
 | `path:exists` | invoke | Check folder reachability during hydration. |

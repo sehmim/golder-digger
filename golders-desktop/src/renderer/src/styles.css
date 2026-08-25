@@ -2148,6 +2148,47 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* Centred, not tucked into the free corner: the overlay is translucent, and both
+   corners already have controls of the page underneath showing through. */
+.golden-results__views {
+  position: absolute;
+  z-index: 2;
+  top: 52px;
+  left: 50%;
+  display: flex;
+  height: 44px;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+}
+
+.golden-results__views button {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.golden-results__views button:hover {
+  color: var(--color-text);
+}
+
+.golden-results__views button[data-active] {
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.golden-results__views button:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+}
+
 .golden-results__body {
   /* Flex column, not centred grid: a centred grid item taller than its track
      overflows *both* ways, so a long list grew upward over the close button
@@ -2946,4 +2987,269 @@ button:focus-visible {
   margin-left: 6px;
   color: var(--color-muted);
   font-size: 10px;
+}
+
+/* ------------------------------------------------------------ transit map */
+
+/* Four lines out of one interchange. Schematic on purpose, the way a metro map
+   is: the horizontal axis is position along a line, not any real distance, and
+   the lines are drawn parallel because they are alternatives rather than a
+   space you could travel diagonally through.
+
+   Two magic numbers hold the diagram together and have to agree: --origin is
+   the column where every rail starts, and --rail is the height of a track row,
+   whose midpoint is where the interchange spine has to stop. */
+
+.transit-map {
+  --origin: 84px;
+  --rail: 22px;
+  --gap: 20px;
+  width: min(100%, 720px);
+  margin-top: 18px;
+}
+
+.transit-map__head {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 6px;
+  padding-left: var(--origin);
+}
+
+.transit-map__origin-label {
+  color: var(--color-text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+}
+
+.transit-map__axis {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+/* The rule between the two words: this axis is direction, not scale. */
+.transit-map__axis i {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.transit-map__lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.transit-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--origin) 1fr;
+  grid-template-rows: var(--rail) auto;
+}
+
+.transit-line[data-colour='green'] {
+  --line: var(--line-green);
+  --ink: var(--line-green-ink);
+}
+
+.transit-line[data-colour='orange'] {
+  --line: var(--line-orange);
+  --ink: var(--line-orange-ink);
+}
+
+.transit-line[data-colour='blue'] {
+  --line: var(--line-blue);
+  --ink: var(--line-blue-ink);
+}
+
+.transit-line[data-colour='yellow'] {
+  --line: var(--line-yellow);
+  --ink: var(--line-yellow-ink);
+}
+
+/* The session is one station, not four: the lines meet on a single spine the
+   way interchange platforms do. Each row draws its own segment and bridges the
+   flex gap below it; the first and last stop at their own rail, so the spine
+   ends on a platform instead of hanging in space. */
+.transit-line::before {
+  position: absolute;
+  top: 0;
+  bottom: calc(var(--gap) * -1);
+  left: var(--origin);
+  width: 6px;
+  border-radius: 3px;
+  background: var(--color-text);
+  content: '';
+  transform: translateX(-50%);
+}
+
+.transit-line:first-child::before { top: calc(var(--rail) / 2); }
+.transit-line:last-child::before { bottom: calc(100% - var(--rail) / 2); }
+/* One line drawn on its own is not an interchange at all. */
+.transit-line:first-child:last-child::before { display: none; }
+
+.transit-line__name {
+  grid-area: 1 / 1;
+  justify-self: end;
+  padding-right: 16px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: var(--rail);
+  text-transform: uppercase;
+}
+
+.transit-line__track {
+  position: relative;
+  grid-area: 1 / 2;
+  height: var(--rail);
+}
+
+.transit-line__rail {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 5px;
+  border-radius: 2.5px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+
+.transit-line__meta {
+  display: flex;
+  grid-area: 2 / 2;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding-left: 12px;
+}
+
+.transit-line__blurb {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Metro lines are named for where they end up. So is this one. */
+.transit-line__terminus {
+  overflow: hidden;
+  margin-left: auto;
+  max-width: 44%;
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transit-line__terminus::before {
+  content: '\2192\00a0';
+}
+
+.transit-line__relaxed {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.transit-stop {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 3px solid var(--line);
+  border-radius: 50%;
+  background: var(--color-surface);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: width 120ms ease, height 120ms ease, box-shadow 120ms ease;
+}
+
+.transit-stop:hover,
+.transit-stop[data-active] {
+  width: 18px;
+  height: 18px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--line) 22%, transparent);
+}
+
+.transit-stop:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 3px;
+}
+
+/* An interchange is a stop that is far along more than one line at once —
+   drawn the way a metro map draws one, as a longer capsule. */
+.transit-stop[data-interchange] {
+  width: 22px;
+  border-radius: 999px;
+  border-color: var(--color-text);
+}
+
+.transit-stop[data-playing] {
+  background: var(--line);
+}
+
+/* Where this line leaves the interchange. Sits on the spine, so it takes the
+   spine's colour rather than the line's. */
+.transit-stop--origin {
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-color: var(--color-text);
+  background: var(--color-text);
+  cursor: default;
+}
+
+.transit-map__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-text);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.transit-map__detail strong {
+  font-size: 13px;
+}
+
+.transit-map__detail span {
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.transit-map__detail small,
+.transit-map__hint,
+.transit-map__empty {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.transit-map__hint,
+.transit-map__empty {
+  margin: 18px 0 0;
+  padding-left: var(--origin);
 }

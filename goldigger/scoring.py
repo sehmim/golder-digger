@@ -40,6 +40,11 @@ class Corpus:
         self.tonic = np.full(n, -1, dtype=np.int16)
         self.kconf = np.zeros(n, dtype=np.float32)
         self.tconf = np.zeros(n, dtype=np.float32)
+        # The timbre descriptors, in TIMBRE_DESCRIPTORS order. NaN for a chunk
+        # that never had them measured, so a missing row is absent evidence
+        # rather than a chunk that happens to sit at the origin.
+        self.spectral = np.full((n, len(config.TIMBRE_DESCRIPTORS)), np.nan,
+                                dtype=np.float32)
         self.roles = [None] * n
         self.hashes = [None] * n
         # False for a measured CLAP vector, True for a synthesized or unknown one.

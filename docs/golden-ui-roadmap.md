@@ -60,6 +60,10 @@ Golden UI currently supports the beginning of the intended experience:
 6. The central knob can be manipulated and styled.
 7. Releasing the knob ranks up to 30 candidates and opens a blurred, scrollable
    results layer with one visible row per source file.
+8. That layer has a second view, **Map**: the same context drawn as four transit
+   lines out of an interchange, one per dimension, so "farther" can name a
+   respect. Fetched lazily on first open and thrown away when the context or the
+   active folders change. See [lines.md](lines.md).
 
 Golden UI does not yet ingest missing project references, define included audio
 inputs, audition suggestions, export exact chunks, support native file dragging,
@@ -113,7 +117,8 @@ The first complete Golden UI journey should be:
 | Context inputs | Every matched project chunk is usable by the prototype. | Decide automatic inclusion versus explicit selection. |
 | Tempo and center | Saved-project values are parsed and summarized. | Define fallbacks, provenance, partial state, and refresh behavior. |
 | Knob | Five detents map to novelty 10, 30, 50, 70, and 90; release commits ranking. | Define disabled behavior and durable query ownership. |
-| Suggestions | Golden UI overlays a scrollable, file-deduplicated ranked list. | Add auditioning and prepare exact chunk files for dragging. |
+| Suggestions | Golden UI overlays a scrollable, file-deduplicated ranked list, plus a transit map of the four scoped lines. | Add auditioning and prepare exact chunk files for dragging. |
+| Explanation | Map stops say why they are far, in words traceable to a score term. Ranked rows still say nothing. | Port the `why` labels onto the ranked list. |
 | Listening | Prototype auditions alone or over context. | Bring the chosen behavior into Golden UI. |
 | Completion | No final handoff exists. | Choose one first action such as reveal, copy path, or drag. |
 | Persistence | Folder intent and knob style persist. Context does not. | Decide context persistence and revalidation. |

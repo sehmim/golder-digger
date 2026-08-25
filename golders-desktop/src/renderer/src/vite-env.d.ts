@@ -6,6 +6,7 @@ import type {
   ChunkPeaks,
   CorpusStats,
   EssentiaSummary,
+  Network,
   PresetList,
   SessionSet
 } from './application/api'
@@ -43,6 +44,13 @@ declare global {
         activeRoots?: string[] | null,
         preset?: string | null
       ) => Promise<AnalyzeResult>
+      sessionLines: (
+        contextIds: string[],
+        stops?: number,
+        sessionPath?: string | null,
+        activeRoots?: string[] | null,
+        preset?: string | null
+      ) => Promise<Network>
       startEssentia: (root: string) => Promise<string>
       essentiaSummary: () => Promise<EssentiaSummary>
       presets: () => Promise<PresetList>

@@ -66,13 +66,16 @@ what the JSON says, so it does not change when scoring does.
 4. Those `ingest_path`s feed straight back into step 2 of the ingest flow above. When
    that job finishes the set is resolved again, and previously-missing rows flip.
 5. `context_ids` (every chunk of every matched sample) is the input to
-   `POST /session/analyze`.
+   `POST /session/analyze` — and to `POST /session/lines`, which builds the identical
+   context through the identical `_build_context` and then asks a different question
+   of it. One context, two answers: a ranked list at one novelty setting, or four
+   scoped routes spanning the whole axis. See [lines.md](lines.md).
 
 ## Why the corpus is in memory
 
 `ingest.load_corpus()` reads every chunk row and packs the embeddings into one
 `(N, 512)` float32 array plus parallel arrays for chroma, bpm, tonic, key confidence,
-role and file hash. At a few thousand chunks a query is a single matmul, so moving the
+role, file hash and the four spectral descriptors. At a few thousand chunks a query is a single matmul, so moving the
 DISTANCE dial re-ranks from cached scores without touching a model.
 
 The cost: **anything that writes chunks must rebuild it.** `api.py` does this after

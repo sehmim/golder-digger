@@ -132,6 +132,41 @@ export interface Candidate {
   components: { H: number; R: number; P: number }
 }
 
+/** One station on a line: a candidate, how far out it sits, and why. */
+export interface Stop {
+  chunk_id: string
+  path: string
+  role: string | null
+  bpm: number | null
+  tonic: string | null
+  fit: number
+  /** Position along this line only, 0 near to 1 far. Not the DISTANCE dial. */
+  position: number
+  /** Faithful by construction: the term that actually moved this stop out. */
+  why: string
+}
+
+export interface Line {
+  key: string
+  /** Semantic token, not hex — styles.css owns the Montreal palette. */
+  colour: 'green' | 'orange' | 'blue' | 'yellow'
+  blurb: string
+  stops: Stop[]
+  /** False when the library cannot answer this line — drawn greyed out. */
+  available: boolean
+  fit_floor: number
+  fit_floor_requested: number
+  /** True when this line had to open its gate to find enough stops. */
+  fit_floor_relaxed: boolean
+}
+
+export interface Network {
+  lines: Line[]
+  interchanges: { chunk_id: string; lines: string[] }[]
+  preset: string
+  fit_floor_requested: number
+}
+
 export interface AnalyzeResult {
   distance: number
   fit_floor: number

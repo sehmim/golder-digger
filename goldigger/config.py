@@ -65,6 +65,42 @@ BANDWIDTH = 0.15            # width of the target novelty band
 REDUNDANCY = 0.35           # mu: penalty for resembling something already picked
 DEFAULT_K = 12
 
+# --- lines (the transit model) ---
+# DIGLINE's sharpest unbuilt idea is that "farther" has to answer *farther along
+# which dimension*. A line is one such dimension: ride it and the material gets
+# further from your session in that respect and that respect only, while Fit
+# still gates everything. Colours are the semantic token, not hex -- Montreal's
+# metro names its lines by colour and every client maps the token to its own
+# palette (see styles.css).
+LINES = [
+    # key         colour    what riding it changes
+    ("harmony",  "green",  "the notes move away from your session's key"),
+    ("groove",   "orange", "the pulse moves away from your session's tempo"),
+    ("timbre",   "blue",   "the sound gets brighter, wider or noisier"),
+    ("character", "yellow", "the overall character drifts -- the CLAP dial"),
+]
+LINE_STOPS = 6              # stations shown per line
+# Novelty percentiles the stops sit at. Not 0 or 1: the nearest thing to your
+# session is not a journey, and the single furthest is usually a broken file.
+LINE_STOP_MIN = 0.12
+LINE_STOP_MAX = 0.88
+LINE_REDUNDANCY = 0.25      # keeps consecutive stops from being near-duplicates
+
+# The timbre half of novelty, which DIGLINE calls the cheapest real improvement
+# on its list. Already measured into chunks.spectral, never loaded until now.
+# rms is loudness and zcr duplicates flatness's axis, so neither is timbre.
+TIMBRE_DESCRIPTORS = ["centroid", "rolloff", "bandwidth", "flatness"]
+# Every one of these is a ratio quantity, and all four are logged for the same
+# reason. Hz descriptors are perceptually logarithmic -- 400->800 Hz is the same
+# musical move as 4000->8000, and on a linear axis the second dwarfs the first.
+# Flatness is a ratio of means, spans 2e-10 to 0.94 across a real library, and is
+# conventionally read in dB; left linear it took *92% of the squared timbre
+# distance* and the blue line was a flatness line wearing a timbre label.
+TIMBRE_LOG = {"centroid", "rolloff", "bandwidth", "flatness"}
+# Median absolute deviations of the library before a move stops being subtle and
+# the label says "much". A guess, like every constant here; tune by ear.
+TIMBRE_STRONG = 2.0
+
 # --- midi context ---
 MIDI_KEYSIG_CONFIDENCE = 0.95  # a stated signature outranks any estimate; not quite a lock
 MIDI_MIN_NOTES = 8          # fewer is a riff fragment, not a statement of the harmony

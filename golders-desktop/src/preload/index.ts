@@ -34,6 +34,15 @@ contextBridge.exposeInMainWorld('desktop', {
     'session:analyze', contextIds, distance, k, sessionPath ?? null, activeRoots,
     preset ?? null
   ),
+  sessionLines: (
+    contextIds: string[],
+    stops?: number,
+    sessionPath?: string | null,
+    activeRoots?: string[] | null,
+    preset?: string | null
+  ) => ipcRenderer.invoke(
+    'session:lines', contextIds, stops, sessionPath ?? null, activeRoots, preset ?? null
+  ),
   startEssentia: (root: string): Promise<string> => ipcRenderer.invoke('essentia:start', root),
   essentiaSummary: () => ipcRenderer.invoke('essentia:summary'),
   presets: () => ipcRenderer.invoke('dev:presets'),

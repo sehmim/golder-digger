@@ -654,6 +654,12 @@ def load_corpus(conn):
         c.tonic[i] = r["tonic_pc"] if r["tonic_pc"] is not None else -1
         c.kconf[i] = r["key_confidence"] or 0.0
         c.tconf[i] = r["tempo_confidence"] or 0.0
+        if r["spectral"]:
+            stats = json.loads(r["spectral"])
+            for j, name in enumerate(config.TIMBRE_DESCRIPTORS):
+                value = (stats.get(name) or {}).get("mean")
+                if value is not None:
+                    c.spectral[i, j] = value
         c.roles[i] = r["role"]
         c.hashes[i] = r["file_hash"]
         c.synthetic[i] = r["synthetic"] != 0 if r["synthetic"] is not None else True
