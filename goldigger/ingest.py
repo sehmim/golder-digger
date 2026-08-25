@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import multiprocessing as mp
+import threading
 import traceback
 import uuid
 from collections import deque
@@ -15,12 +16,18 @@ import numpy as np
 from . import config, db, essentia_runner, features, filename, mock
 
 _clap = None
+# The direct-context path (`context_paths`) analyzes on a request thread, so
+# two requests arriving during the ~19s torch load would each build their own
+# model -- twice the memory, and the loser's is discarded mid-construction.
+_clap_lock = threading.Lock()
 
 
 def _clap_model():
     global _clap
     if _clap is None:
-        _clap = features.Clap()
+        with _clap_lock:
+            if _clap is None:
+                _clap = features.Clap()
     return _clap
 
 

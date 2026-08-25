@@ -1,6 +1,8 @@
 """SQLite schema and blob helpers. Vectors are fixed-width float32 blobs."""
 import sqlite3
 import threading
+from pathlib import Path
+
 import numpy as np
 from . import config
 
@@ -122,7 +124,13 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 
 def connect(path=None):
-    conn = sqlite3.connect(str(path or config.DB_PATH), check_same_thread=False)
+    path = Path(path or config.DB_PATH)
+    # GOLDDIGGER_DATA can name a directory that does not exist yet -- a packaged
+    # app's userData on first launch. Without this the engine dies at startup
+    # with sqlite's "unable to open database file", which names neither the
+    # path nor the reason.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")

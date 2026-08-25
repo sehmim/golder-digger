@@ -40,8 +40,17 @@ def _varlen(data: bytes, pos: int) -> tuple[int, int]:
 
 
 def _track_events(data: bytes):
-    """(ticks, status, payload) per event, running status resolved."""
-    pos, ticks, status = 0, 0, 0
+    """(ticks, status, payload) per event, running status resolved.
+
+    Only channel messages become the running status. The spec says meta and
+    sysex cancel it; real exports (karaoke files, older sequencers) instead
+    continue the previous channel status across them. Remembering the last
+    channel status rather than clearing it reads both dialects correctly --
+    and, crucially, stops a 0xFF from *becoming* the running status, which
+    turns the next note-on into a fake meta event whose velocity is read as a
+    payload length and silently eats the rest of the track.
+    """
+    pos, ticks, status, running = 0, 0, 0, 0
     while pos < len(data):
         delta, pos = _varlen(data, pos)
         ticks += delta
@@ -49,6 +58,12 @@ def _track_events(data: bytes):
         if byte & 0x80:
             status = byte
             pos += 1
+            if status < 0xF0:
+                running = status
+        else:
+            if not running:
+                raise ValueError(f"data byte {byte:#04x} with no running status")
+            status = running
         if status == 0xFF:                      # meta: type, varlen, payload
             mtype = data[pos]
             size, pos = _varlen(data, pos + 1)
@@ -118,7 +133,7 @@ def load_midi(path) -> dict:
                     open_notes[(channel, payload[0])] = (ticks, payload[1])
                     notes += 1
                 elif kind == 0x80 or (kind == 0x90 and payload[1] == 0):
-                    started = open_notes.pop((status & 0x0F, payload[0]), None)
+                    started = open_notes.pop((channel, payload[0]), None)
                     if started:
                         t0, vel = started
                         w = (ticks - t0) * (vel / 127.0)
@@ -127,7 +142,7 @@ def load_midi(path) -> dict:
                             drum_weight += w
                         else:
                             pc[payload[0] % 12] += w
-        except IndexError as exc:
+        except (IndexError, ValueError) as exc:
             raise UnreadableMidi(path, f"malformed track data: {exc}") from exc
         for (channel, pitch), (t0, vel) in open_notes.items():
             w = (end - t0) * (vel / 127.0)      # never released: rings to track end
@@ -203,8 +218,12 @@ def apply_midi_context(ctx: dict, mid: dict) -> list[str]:
         ctx["tconf"] = 1.0
         applied.append("bpm")
     pc, is_major, conf = estimate_key(mid)
-    # a stated signature always lands; an estimate only beats weaker evidence
-    if pc is not None and conf >= (ctx.get("kconf") or 0.0):
+    # A stated signature always lands, including over a Live set's own stated
+    # key (which pins kconf to 1.0): the handler applies the .als first
+    # precisely so the exported MIDI -- the more deliberate statement -- wins.
+    # Comparing confidences alone could never express that, since 0.95 < 1.0.
+    stated = mid["tonic_pc"] is not None
+    if pc is not None and (stated or conf >= (ctx.get("kconf") or 0.0)):
         ctx["tonic"] = int(pc)
         ctx["kconf"] = float(conf)
         applied.append("tonic")

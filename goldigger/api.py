@@ -524,18 +524,27 @@ def _context_rows_cached(path: str) -> list[dict]:
 def _merge_contexts(a: dict, b: dict) -> dict:
     """Resolved chunks and direct audio files, one context: means where both
     sides measured the same thing, the more confident side where they disagree
-    on a single answer."""
+    on a single answer.
+
+    Tempo is picked, never averaged. The two sides of one session are routinely
+    a half-time pair -- an 87 BPM loop and a 174 BPM bounce -- which
+    tempo_score calls a perfect match and whose mean, 130.5, is a tempo neither
+    side plays and every candidate is then scored against.
+    """
     clap = a["clap"] + b["clap"]
     chroma = a["chroma"] + b["chroma"]
     tonic, kconf = max((a["tonic"], a["kconf"]), (b["tonic"], b["kconf"]),
                        key=lambda t: t[1])
-    bpms = [x for x in (a["bpm"], b["bpm"]) if x]
+    timed = [(x["bpm"], x.get("tconf", 1.0)) for x in (a, b) if x["bpm"]]
+    bpm, tconf = max(timed, key=lambda t: t[1]) if timed else (None, 0.0)
     return {
         "idx": a["idx"],
         "clap": (clap / (np.linalg.norm(clap) + 1e-9)).astype(np.float32),
         "chroma": (chroma / (chroma.sum() + 1e-9)).astype(np.float32),
-        "bpm": float(np.mean(bpms)) if bpms else None,
-        "tconf": float(np.mean([a.get("tconf", 1.0), b.get("tconf", 1.0)])),
+        "bpm": float(bpm) if bpm else None,
+        # the confidence of the tempo actually kept, not a blend with a side
+        # that had nothing to say about tempo
+        "tconf": float(tconf),
         "tonic": int(tonic), "kconf": float(kconf),
         "roles": a["roles"] | b["roles"],
         "hashes": a["hashes"] | b["hashes"],

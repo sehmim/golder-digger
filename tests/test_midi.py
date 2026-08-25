@@ -111,6 +111,36 @@ def test_key_is_estimated_from_notes_when_unstated(tmp_path):
     assert conf > 0.0
 
 
+def test_running_status_survives_a_meta_event(tmp_path):
+    """Karaoke and older-sequencer exports interleave meta events between
+    running-status note data. A parser that lets 0xFF *become* the running
+    status reads the next note number as a meta type and its velocity as a
+    payload length, silently eating the rest of the track."""
+    # note-off as note-on velocity 0, which is what keeps a running status of
+    # 0x90 alive across the marker -- the shape these files actually have
+    explicit = write_mid(tmp_path / "explicit.mid", _track(
+        _ev(0x90, 60, 100), _ev(0x90, 60, 0, dt=96),
+        _meta(0x06, b"AAA"),
+        _ev(0x90, 64, 100), _ev(0x90, 64, 0, dt=96)))
+    interleaved = write_mid(tmp_path / "interleaved.mid", _track(
+        _ev(0x90, 60, 100), _ev(0x90, 60, 0, dt=96),
+        _meta(0x06, b"AAA"),                        # marker between the notes
+        bytes([0, 64, 100]), bytes([96, 64, 0])))   # running status, no 0x90
+
+    a, b = midi.load_midi(explicit), midi.load_midi(interleaved)
+
+    assert b["notes"] == a["notes"] == 2
+    assert np.allclose(b["chroma"], a["chroma"])
+
+
+def test_a_data_byte_with_no_running_status_is_named(tmp_path):
+    path = tmp_path / "bad.mid"
+    path.write_bytes(_smf(_track(bytes([0, 60, 100]))))
+    with pytest.raises(midi.UnreadableMidi) as err:
+        midi.load_midi(str(path))
+    assert "running status" in str(err.value)
+
+
 def test_garbage_is_a_named_failure(tmp_path):
     bad = tmp_path / "not.mid"
     bad.write_bytes(b"RIFF this is not midi")
@@ -183,6 +213,31 @@ def test_an_audio_file_alone_is_a_context(client):
     assert body["novelty_anchor"] == "context"  # its own audio anchors the dial
     # matching against a file the corpus holds must never return that file
     assert all(r["path"] != str(root / "0.wav") for r in body["results"])
+
+
+def test_a_stated_midi_key_overrides_a_stated_live_key(client, tmp_path):
+    """The handler applies the .als first so the exported MIDI -- the more
+    deliberate statement -- wins. Live's key pins kconf to 1.0, so comparing
+    confidences alone could never express that."""
+    ctx = {"bpm": 120.0, "tconf": 1.0, "tonic": 0, "kconf": 1.0,
+           "chroma": np.full(12, 1 / 12, dtype=np.float32), "roles": set()}
+    path = write_mid(tmp_path / "s.mid", _track(_keysig(1, True), _note(64)))
+
+    applied = midi.apply_midi_context(ctx, midi.load_midi(path))
+
+    assert "tonic" in applied
+    assert ctx["tonic"] == 4                    # E minor, not Live's C
+
+
+def test_an_estimated_midi_key_still_defers_to_stronger_evidence(client, tmp_path):
+    ctx = {"bpm": 120.0, "tconf": 1.0, "tonic": 7, "kconf": 1.0,
+           "chroma": np.full(12, 1 / 12, dtype=np.float32), "roles": set()}
+    scale = [60, 62, 64, 65, 67, 69, 71, 72, 64, 60]    # no key signature
+    path = write_mid(tmp_path / "e.mid", _track(*[_note(p) for p in scale]))
+
+    applied = midi.apply_midi_context(ctx, midi.load_midi(path))
+
+    assert "tonic" not in applied and ctx["tonic"] == 7
 
 
 def test_a_stated_bpm_beats_everything_inferred(client):

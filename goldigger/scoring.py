@@ -169,16 +169,23 @@ def build_context(corpus: Corpus, chunk_ids: list[str]) -> dict:
     clap /= np.linalg.norm(clap) + 1e-9
     chroma = corpus.chroma[idx].mean(axis=0)
     chroma /= chroma.sum() + 1e-9
-    bpms = corpus.bpm[idx]
-    bpms = bpms[~np.isnan(bpms)]
+    has_bpm = ~np.isnan(corpus.bpm[idx])
+    bpms = corpus.bpm[idx][has_bpm]
     kc = corpus.kconf[idx]
     tc = getattr(corpus, "tconf", None)
+    # over the members that *have* a tempo, matching how ctx["bpm"] is taken:
+    # a one-shot stores tempo_confidence 0 because it has no tempo, and letting
+    # those zeros average in would discount the loops the median came from
+    tconf = 1.0
+    if tc is not None:
+        member_tconf = tc[idx][has_bpm]
+        tconf = float(member_tconf.mean()) if len(member_tconf) else 0.0
     return {
         "idx": idx,
         "clap": clap,
         "chroma": chroma,
         "bpm": float(np.median(bpms)) if len(bpms) else None,
-        "tconf": float(tc[idx].mean()) if tc is not None else 1.0,
+        "tconf": tconf,
         # tonic of the most confident member, not a meaningless average
         "tonic": int(corpus.tonic[idx[int(np.argmax(kc))]]) if len(kc) else -1,
         "kconf": float(kc.mean()) if len(kc) else 0.0,
@@ -203,7 +210,8 @@ def context_from_rows(rows: list[dict]) -> dict:
     clap = clap / (np.linalg.norm(clap) + 1e-9)
     chroma = np.mean([np.asarray(r["chroma"], dtype=np.float32) for r in rows], axis=0)
     chroma = chroma / (chroma.sum() + 1e-9)
-    bpms = [r["bpm"] for r in rows if r["bpm"]]
+    timed = [r for r in rows if r["bpm"]]
+    bpms = [r["bpm"] for r in timed]
     kc = [r["key_confidence"] or 0.0 for r in rows]
     best = int(np.argmax(kc))
     return {
@@ -211,7 +219,9 @@ def context_from_rows(rows: list[dict]) -> dict:
         "clap": clap.astype(np.float32),
         "chroma": chroma.astype(np.float32),
         "bpm": float(np.median(bpms)) if bpms else None,
-        "tconf": float(np.mean([r["tempo_confidence"] or 0.0 for r in rows])),
+        # over the rows that have a tempo, for the reason build_context gives
+        "tconf": float(np.mean([r["tempo_confidence"] or 0.0 for r in timed]))
+                 if timed else 0.0,
         "tonic": int(rows[best]["tonic_pc"]) if rows[best]["tonic_pc"] is not None else -1,
         "kconf": float(np.mean(kc)),
         "roles": {r["role"] for r in rows if r["role"]},
