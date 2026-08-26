@@ -157,12 +157,19 @@ def health():
     return {"ok": True, "mock": config.MOCK, "chunks": len(c) if c else 0,
             "synthetic_chunks": int(c.synthetic.sum()) if c else 0,
             "presets": [p.key for p in presets.PRESETS],
-            # THE STALE-SERVER MARKER. src/main/api.ts refuses to adopt an
-            # already-listening server that lacks this key, which is the only
-            # thing standing between a leftover `golddigger serve` and a UI that
-            # 404s every route added since it started. Add a NEW key here and
-            # move HEALTH_MARKER to it whenever routes are added -- presence is
-            # what is checked, so changing an existing key's value pins nothing.
+            # WHAT THIS BUILD CAN ACTUALLY DO. src/main/api.ts adopts an
+            # already-listening server rather than spawning a second one, which
+            # is right for a `golddigger serve` you left in a terminal and wrong
+            # for one older than the routes the app needs; it checks its
+            # REQUIRED_ROUTES against this list and refuses the ones that would
+            # 404. Derived from the app, so it cannot be forgotten -- the marker
+            # key it replaces was added in the first commit, never moved, and so
+            # was present in every build from 20 routes to 22, discriminating
+            # nothing. tests/test_health_contract.py holds the two sides
+            # together.
+            "routes": sorted({r.path for r in app.routes
+                              if getattr(r, "methods", None)}),
+            # kept because the desktop still reads it; no longer load-bearing
             "chunk_peaks": True,
             "db": str(config.DB_PATH),
             # how ingest will characterise files, before anything is ingested

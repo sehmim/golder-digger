@@ -51,11 +51,18 @@ fail() { printf '\033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 
 health() { curl -fsS -m 2 "http://127.0.0.1:$PORT/health" 2>/dev/null; }
 
-# Only ever targets our own uvicorn, never some unrelated process on the port.
+# Only ever targets our own API, never some unrelated process on the port.
+# Both spawn forms have to match. This script and the Electron main process run
+# `-m uvicorn goldigger.api:app`, but the command the docs tell people to use is
+# `golddigger serve`, whose command line is `-m goldigger.cli serve`. Matching
+# only the first meant --restart could not see a server started the documented
+# way: listener_pid returned 1, the port check below decided the listener was
+# somebody else's, and start.sh refused to run at all -- while the desktop app
+# was printing "restart it (./start.sh --restart)" as the remedy.
 listener_pid() {
   local pid
   for pid in $(lsof -tnP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null); do
-    if ps -p "$pid" -o command= | grep -q 'goldigger.api'; then
+    if ps -p "$pid" -o command= | grep -qE 'goldigger\.(api|cli)'; then
       echo "$pid"
       return 0
     fi

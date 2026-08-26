@@ -171,13 +171,45 @@ function pythonBin(): string {
 }
 
 /**
- * A field that only exists in a build with the current routes.
+ * The routes this app cannot run without.
  *
  * An already-listening server is adopted rather than replaced, so a `serve` left
  * over from an earlier session gets used silently and then 404s every route
- * added since it started. Checking one field turns that into a message.
+ * added since it started. This used to be guarded by one marker key somebody had
+ * to remember to move; nobody ever did, so from the first commit onward it was
+ * present in every build and discriminated nothing -- /session/midi and
+ * /session/lines both shipped behind a check that could not see them. /health
+ * now reports its own route table, and this is the list checked against it.
+ *
+ * Add a route here when you add a call below. `tests/test_health_contract.py`
+ * parses this literal and fails if the engine does not serve one of them.
  */
-const HEALTH_MARKER = 'chunk_peaks'
+const REQUIRED_ROUTES = [
+  '/health',
+  '/ingest',
+  '/ingest/status/{job_id}',
+  '/library/files',
+  '/folders/status',
+  '/corpus/stats',
+  '/presets',
+  '/essentia',
+  '/essentia/summary',
+  '/session/als',
+  '/session/analyze',
+  '/session/lines',
+  '/chunk/{chunk_id}/peaks',
+  '/chunk/{chunk_id}/audio'
+]
+
+/** Routes the adopted server does not serve. Empty means it is new enough. */
+function missingRoutes(body: Record<string, unknown>): string[] {
+  const served = body.routes
+  // A server predating the routes list cannot answer the question, and every
+  // build old enough to lack it is old enough to be refused.
+  if (!Array.isArray(served)) return [...REQUIRED_ROUTES]
+  const have = new Set(served as string[])
+  return REQUIRED_ROUTES.filter((route) => !have.has(route))
+}
 
 async function healthBody(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
   try {
@@ -203,10 +235,11 @@ export async function start(): Promise<void> {
     // A server already listening (a `golddigger serve` in a terminal) is used as is.
     const existing = await healthBody()
     if (existing) {
-      if (!(HEALTH_MARKER in existing)) {
+      const missing = missingRoutes(existing)
+      if (missing.length) {
         bootError =
-          `the API already running on :${PORT} is older than this app and will 404 ` +
-          'newer routes — restart it (./start.sh --restart)'
+          `the API already running on :${PORT} is older than this app — it does not ` +
+          `serve ${missing.join(', ')}. Restart it with ./start.sh --restart`
         throw new Error(bootError)
       }
       ready = true

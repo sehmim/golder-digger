@@ -174,9 +174,12 @@ The existing code is written a particular way, and new code should match it:
   (assembled by `golders-desktop/scripts/package-engine.sh`, see the desktop
   README) and writes to `userData` via `GOLDDIGGER_DATA`.
 - `src/main/api.ts` **reuses an already-listening server on :8420** rather than
-  spawning a second one. A stale `golddigger serve` from an earlier session used to be
-  adopted silently and 404 every route added since it started; `start()` now checks
-  `/health` for the `essentia` field and refuses to adopt a server without it. Move that
-  marker whenever the health payload gains a field that pins a newer build.
+  spawning a second one. A stale `golddigger serve` from an earlier session gets adopted
+  silently and then 404s every route added since it started. `/health` reports its own
+  route table and `start()` refuses to adopt a server missing anything in
+  `REQUIRED_ROUTES`; add a route there when you add a call, and
+  `tests/test_health_contract.py` fails if the engine does not serve it. This replaced a
+  single marker key that had to be moved by hand and never was — it was in the payload
+  from the first commit, so it was present in every build and pinned nothing.
 - Drag-and-drop of a `.als` opens the file picker instead of reading the drop. The
   browser hands over a filename, not a path, and `ableton.resolve()` needs a real one.

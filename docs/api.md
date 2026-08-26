@@ -10,11 +10,19 @@ not an error to hide from the user.
 ## Routes
 
 ### `GET /health`
-`{ok, mock, chunks, synthetic_chunks, presets, chunk_peaks, db, essentia}`. Used by
-Electron to decide whether to spawn a child process. `essentia` is `native` /
-`docker` / `null` — how ingest will characterise files. `chunk_peaks` is the marker
-`src/main/api.ts` checks before adopting an already-listening server; move it whenever
-this payload gains a field that pins a newer build.
+`{ok, mock, chunks, synthetic_chunks, presets, routes, chunk_peaks, db, essentia}`.
+Used by Electron to decide whether to spawn a child process. `essentia` is `native` /
+`docker` / `null` — how ingest will characterise files.
+
+`routes` is every path this build serves, derived from the app itself. Electron adopts
+an already-listening server rather than spawning a second one, and checks its
+`REQUIRED_ROUTES` against this list first — a leftover `golddigger serve` older than a
+route the app calls is refused with a message naming the missing routes, instead of
+404ing at the moment someone clicks. It is derived rather than hand-maintained because
+the single marker key it replaces (`chunk_peaks`, still sent, no longer load-bearing)
+was added in the first commit and never moved, so it was present in every build from 20
+routes to 22 and discriminated nothing. `tests/test_health_contract.py` holds the two
+sides together.
 
 ### `POST /ingest`
 `{root}` or `{roots: [...]}` — at least one is required. Each entry may be a folder or a
